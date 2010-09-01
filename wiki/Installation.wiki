@@ -8,10 +8,10 @@
 
 = Usage =
 
-  #Start the server.
-  #Start the client.
-    *Follow instructions in client window.
-  #Start a second client on another machine (needs different ip address).
+  # Start the server.
+  # Start the client.
+    * Follow instructions in client window.
+  # Start a second client on another machine (needs different ip address).
 
 
 The program is very basic right now.  Mostly just in the proof of concept stages.
