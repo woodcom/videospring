@@ -1,0 +1,18 @@
+#summary Instructions for installing and using this software.
+
+= Installation =
+
+  #Run the msi file and follow instructions to install.  It should automatically install the WebM codecs at the end.
+
+  #Copy the VideoSpring.ini file from the directory you installed it to to c:\
+  #Edit VideoSpring.ini and put the ip address of the server in it
+
+= Usage =
+
+  #Start the server.
+  #Start the client.
+    *Follow instructions in client window.
+  #Start a second client on another machine (needs different ip address).
+
+
+The program is very basic right now.  Mostly just in the proof of concept stages.
