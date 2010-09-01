@@ -111,7 +111,10 @@ CVideoSpringRecvPin::CVideoSpringRecvPin(HRESULT *phr, CSource *pFilter)
 		Message m;
 
 		m.header.command = C_SET_CLIENT_RECV;
-		m.header.length = 0;
+		m.header.length = sizeof(DWORD);
+
+		DWORD pid = GetProcessId(NULL);
+		m.data = (BYTE*)&pid;
 
 		sendMessage(server, &m);
 

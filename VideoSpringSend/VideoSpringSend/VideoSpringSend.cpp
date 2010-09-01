@@ -341,7 +341,10 @@ HRESULT CVideoSpringSendInputPin::Active(void)
 
 	Message m;
 	m.header.command = C_SET_PRESENTER_SEND;
-	m.header.length = 0;
+	m.header.length = sizeof(DWORD);
+
+	DWORD pid = GetProcessId(NULL);
+	m.data = (BYTE*)&pid;
 
 	if(sendMessage(server, &m) != 0)
 	{

@@ -21,6 +21,8 @@ HRESULT getVideoCaptureDevice(IBaseFilter **ret)
 		// Enumerate the monikers.
 		IMoniker *pMoniker = NULL;
 		ULONG cFetched;
+		system("cls");
+		printf("CHOOSE CAPTURE DEVICE\n\n");
 		while(pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK)
 		{
 			IPropertyBag *pPropBag;
@@ -35,7 +37,7 @@ HRESULT getVideoCaptureDevice(IBaseFilter **ret)
 				{
 					char buff[1024];
 					// Display the name in your UI somehow.
-					wprintf(L"\n%s y/n:\n", varName.bstrVal);
+					wprintf(L"%s y/n: ", varName.bstrVal);
 					scanf("%s", buff);
 					if(buff[0] == 'y')
 					{
@@ -84,6 +86,8 @@ Capture::~Capture()
 
 int Capture::runGraph()
 {
+	system("cls");
+	printf("Starting Graph...");
 	HRESULT hr;
 	hr = control->Run();
 //	long evCode;
@@ -109,7 +113,6 @@ int Capture::createGraph()
 		printf("No video capture devices found!\n");
 		return 1;
 	}
-
 	graph->AddFilter(cap, NULL);
 
 	IPin *pinOut;
@@ -132,12 +135,27 @@ int Capture::createGraph()
 
 	hr = CoCreateInstance(CLSID_VP8Encoder, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&encoder);
 	encoder->QueryInterface(IID_IVP8Encoder, (void**)&encoderControl);
-
-	encoderControl->SetDeadline(100);
 	encoderControl->SetErrorResilient(1);
-	encoderControl->SetKeyframeMode(kKeyframeModeDisabled);
-	encoderControl->SetTargetBitrate(500);
-	encoderControl->SetThreadCount(8);
+	//encoderControl->SetKeyframeMode(kKeyframeModeDisabled);
+	
+	system("cls");
+
+	printf("ENCODER SETTINGS\n\n");
+
+	int deadline = 0;
+	int bitrate = 0;
+	int threadcount = 0;
+
+	printf("Enter deadline: ");
+	scanf("%d", &deadline);
+	printf("Enter Bit Rate: ");
+	scanf("%d", &bitrate);
+	printf("Enter Thread Count: ");
+	scanf("%d", &threadcount);
+
+	encoderControl->SetDeadline(deadline);
+	encoderControl->SetTargetBitrate(bitrate);
+	encoderControl->SetThreadCount(threadcount);
 	encoderControl->SetEndUsage(kEndUsageCBR);
 	encoderControl->ApplySettings();
 
@@ -153,6 +171,42 @@ int Capture::createGraph()
 	hr = pins->Next(1, &encIn, NULL);
 	hr = pins->Next(1, &encOut, NULL);
 	hr = send->FindPin(L"VideoSpringSend Input Pin", &sendIn);
+
+	IAMStreamConfig *config;
+
+	hr = capOut->QueryInterface(IID_IAMStreamConfig, (void**)&config);
+
+	if(hr == S_OK)
+	{
+		AM_MEDIA_TYPE *format;
+		VIDEO_STREAM_CONFIG_CAPS caps;
+
+		int numCaps, capSize;
+		config->GetNumberOfCapabilities(&numCaps, &capSize);
+		system("cls");
+		printf("CHOOSE OUTPUT FORMAT\n\n");
+		for(int i = 0; i < numCaps; i++)
+		{
+			config->GetStreamCaps(i, &format, (BYTE*)&caps);
+
+			VIDEOINFOHEADER *video = (VIDEOINFOHEADER*)format->pbFormat;
+
+			if(video->bmiHeader.biBitCount == 24) continue;
+
+			char buff[1024];
+
+			printf("%dx%d @ %d-bit y/n: ", video->bmiHeader.biWidth, video->bmiHeader.biHeight, video->bmiHeader.biBitCount);
+
+			scanf("%s", buff);
+			if(buff[0] == 'y')
+			{
+				hr = config->SetFormat(format);
+				break;
+			}
+		}
+	}
+
+
 	hr = graph->Connect(capOut, encIn);
 //	hr = graph->Connect(colorOut, encIn);
 	hr = graph->Connect(encOut, sendIn);
