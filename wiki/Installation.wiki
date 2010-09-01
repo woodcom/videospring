@@ -2,10 +2,9 @@
 
 = Installation =
 
-  #Run the msi file and follow instructions to install.  It should automatically install the WebM codecs at the end.
-
-  #Copy the VideoSpring.ini file from the directory you installed it to to c:\
-  #Edit VideoSpring.ini and put the ip address of the server in it
+  # Run the msi file and follow instructions to install.  It should automatically install the WebM codecs at the end.
+  # Copy the VideoSpring.ini file from the directory you installed it to to c:\
+  # Edit VideoSpring.ini and put the ip address of the server in it
 
 = Usage =
 
