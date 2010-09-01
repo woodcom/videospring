@@ -86,7 +86,14 @@
     <ClInclude Include="..\..\common\VideoSpringCommon.h" />
     <ClInclude Include="Capture.h" />
     <ClInclude Include="Player.h" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="vp8encoderidl.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\common\lifespring.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="VideoSpring.res" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

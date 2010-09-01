@@ -22,6 +22,7 @@ class Client
 	private:
 		SOCKET socket;  //accepted socket
 		char client_info[1024];
+		DWORD pid;
 		Client *next; //this will be a singly linked list
 
 		// Statistics
@@ -38,13 +39,17 @@ class Client
 			{
 			case C_SET_PRESENTER_SEND:
 				printf("\nType: Presenter\n");
+				memcpy(&pid, m.data, sizeof(DWORD));
 //				firstFrameLength = 0;
 //				HeapFree(GetProcessHeap(), 0, firstFrame);
 				type = 0;
 				break;
 			case C_SET_CLIENT_RECV:
 			{
-				printf("\nType: Client\n");
+				if(type != 1)
+					printf("\nType: Client\n");
+
+				memcpy(&pid, m.data, sizeof(DWORD));
 				type = 1;
 
 				Message msg;
@@ -55,9 +60,8 @@ class Client
 
 				while(c != NULL)
 				{
-					if(c->GetType() == 0 && strcmp(client_info, c->client_info) != 0 && c->formatLength > 0)
+					if(c->GetType() == 0 && (strcmp(client_info, c->client_info) || pid != c->pid) != 0 && c->formatLength > 0)
 					{
-						printf("\nSending format from #%d to #%d.\n", c->id, id);
 						msg.header.length = c->formatLength;
 						msg.data = c->format;
 						c->wait = 0;
@@ -89,9 +93,8 @@ class Client
 
 					while(c != NULL)
 					{
-						if(c->GetType() == 1 && strcmp(client_info, c->client_info) != 0)
+						if(c->GetType() == 1 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid))
 						{
-							printf("\nBroadcasting from #%d to %d\n", id, c->id);
 							sendMessage(c->GetSocket(), &m);
 						}
 						c = c->GetNext();

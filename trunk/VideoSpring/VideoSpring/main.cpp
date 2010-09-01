@@ -3,8 +3,6 @@
 
 int main(int argc, char** argv)
 {
-	printf("Initializing COM...");
-
 	HRESULT hr = CoInitialize(NULL);
 	if (FAILED(hr))
 	{
