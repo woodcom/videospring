@@ -8,9 +8,6 @@ long total_clients = 0;
 fd_set read_set, write_set, except_set;
 Client *client_head = NULL;
 
-//BYTE *firstFrame = NULL;
-//long firstFrameLength = 0;
-
 class Client
 {
 	public:
@@ -18,6 +15,10 @@ class Client
 		BYTE *format;
 		long formatLength;
 		int wait;
+		BYTE *firstFrame;
+		long firstFrameLength;
+		BYTE *frame;
+		long frameLength;
 
 	private:
 		SOCKET socket;  //accepted socket
@@ -30,6 +31,9 @@ class Client
 		long sentBytes;
 		long receivedBytes;
 
+		long lastFrame;
+		long renderedFrame;
+
 		int type;
 
 	public:
@@ -40,8 +44,8 @@ class Client
 			case C_SET_PRESENTER_SEND:
 				printf("\nType: Presenter\n");
 				memcpy(&pid, m.data, sizeof(DWORD));
-//				firstFrameLength = 0;
-//				HeapFree(GetProcessHeap(), 0, firstFrame);
+				firstFrameLength = 0;
+				HeapFree(GetProcessHeap(), 0, firstFrame);
 				type = 0;
 				break;
 			case C_SET_CLIENT_RECV:
@@ -60,7 +64,7 @@ class Client
 
 				while(c != NULL)
 				{
-					if(c->GetType() == 0 && (strcmp(client_info, c->client_info) || pid != c->pid) != 0 && c->formatLength > 0)
+					if(c->GetType() == 0 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid) != 0 && c->formatLength > 0)
 					{
 						msg.header.length = c->formatLength;
 						msg.data = c->format;
@@ -71,39 +75,65 @@ class Client
 				}
 
 				sendMessage(socket, &msg);
-				/*
-				if(firstFrameLength > 0)
-				{
-					msg.header.length = firstFrameLength;
-					msg.data = firstFrame;
-					sendMessage(socket, &msg);
-				}*/
+				
 				break;
 			}
 			case C_BROADCAST:
-				if(type == 0) // Presenter sends to everyone else
+				if(firstFrameLength == 0)
 				{
-/*					if(firstFrameLength == 0)
-					{
-						firstFrameLength = m.header.length;
-						firstFrame = (BYTE*)HeapAlloc(GetProcessHeap(), 0, firstFrameLength);
-						memcpy(firstFrame, m.data, firstFrameLength);
-					}*/
-					Client *c = client_head;
-
-					while(c != NULL)
-					{
-						if(c->GetType() == 1 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid))
-						{
-							sendMessage(c->GetSocket(), &m);
-						}
-						c = c->GetNext();
-					}
+					firstFrameLength = m.header.length;
+					firstFrame = (BYTE*)HeapAlloc(GetProcessHeap(), 0, firstFrameLength);
+					memcpy(firstFrame, m.data, firstFrameLength);
 				}
-				else if(type == 1) // Sends only to presenter
-				{
-				}
+				frameLength = m.header.length;
+				frame = (BYTE*)HeapAlloc(GetProcessHeap(), 0, frameLength);
+				memcpy(frame, m.data, frameLength);
+				lastFrame++;
 				break;
+			case C_RECEIVE:
+			{
+				Client *c = client_head;
+				while(c != NULL)
+				{
+					if(c->GetType() == 0 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid))
+					{
+						if(renderedFrame < c->lastFrame)
+						{
+							Message m;
+							if(firstFrameLength == 0)
+							{
+								firstFrameLength = c->firstFrameLength;
+								m.header.length = c->firstFrameLength;
+								m.data = c->firstFrame;
+							}
+							else
+							{
+								m.header.length = c->frameLength;
+								m.data = c->frame;
+							}
+							renderedFrame++;
+							sendMessage(socket, &m);
+							return;
+						}
+						else
+						{
+							Message m;
+							m.header.command = 0;
+							m.header.length = 0;
+							m.data = NULL;
+							sendMessage(socket, &m);
+							return;
+						}
+					}
+					c = c->GetNext();
+				}
+				Message m;
+				m.header.command = 0;
+				m.header.length = 0;
+				m.data = NULL;
+				sendMessage(socket, &m);
+				break;
+			}
 			case C_SET_FORMAT:
 				printf("\nFormat Received\n");
 				HeapFree(GetProcessHeap(), 0, format);
@@ -202,6 +232,12 @@ class Client
 		format = NULL;
 		formatLength = 0;
 		wait = 0;
+		firstFrameLength = 0;
+		firstFrame = NULL;
+		frameLength = 0;
+		frame = NULL;
+		lastFrame = 0;
+		renderedFrame = 0;
 		printf("\nCreated Client #%d\n", id);
      }
 

@@ -166,8 +166,8 @@ int deleteMessage(Message &m)
 {
 	try
 	{
-	if(m.header.length > 0 && m.data != NULL)
-		HeapFree(GetProcessHeap(), 0, m.data);
+		//if(m.header.length > 0 && m.data != NULL)
+			//HeapFree(GetProcessHeap(), 0, m.data);
 	}
 	catch(...)
 	{

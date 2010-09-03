@@ -4,50 +4,60 @@
 HRESULT getVideoCaptureDevice(IBaseFilter **ret)
 {
 	// Create the System Device Enumerator.
-	HRESULT hr;
 	ICreateDevEnum *pSysDevEnum = NULL;
-	hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void **)&pSysDevEnum);
-	if (FAILED(hr))
+	
+	HRESULT hr;
+
+	if(FAILED(hr = CoCreateInstance(CLSID_SystemDeviceEnum, NULL, CLSCTX_INPROC_SERVER, IID_ICreateDevEnum, (void **)&pSysDevEnum)))
 	{
 		return hr;
 	}
 
 	// Obtain a class enumerator for the video compressor category.
 	IEnumMoniker *pEnumCat = NULL;
-	hr = pSysDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnumCat, 0);
-
-	if (hr == S_OK) 
+	
+	if(FAILED(hr = pSysDevEnum->CreateClassEnumerator(CLSID_VideoInputDeviceCategory, &pEnumCat, 0)))
+	{
+		pSysDevEnum->Release();
+		return hr;
+	}
+	else
 	{
 		// Enumerate the monikers.
 		IMoniker *pMoniker = NULL;
 		ULONG cFetched;
+
 		system("cls");
 		printf("CHOOSE CAPTURE DEVICE\n\n");
+
 		while(pEnumCat->Next(1, &pMoniker, &cFetched) == S_OK)
 		{
 			IPropertyBag *pPropBag;
-			hr = pMoniker->BindToStorage(0, 0, IID_IPropertyBag, (void **)&pPropBag);
-			if (SUCCEEDED(hr))
+
+			if (SUCCEEDED(pMoniker->BindToStorage(0, 0, IID_IPropertyBag, (void **)&pPropBag)))
 			{
 				// To retrieve the filter's friendly name, do the following:
 				VARIANT varName;
 				VariantInit(&varName);
-				hr = pPropBag->Read(L"FriendlyName", &varName, 0);
-				if (SUCCEEDED(hr))
+
+				if (SUCCEEDED(pPropBag->Read(L"FriendlyName", &varName, 0)))
 				{
 					char buff[1024];
 					// Display the name in your UI somehow.
 					wprintf(L"%s y/n: ", varName.bstrVal);
 					scanf("%s", buff);
+
 					if(buff[0] == 'y')
 					{
+						pPropBag->Release();
+						pEnumCat->Release();
+						pSysDevEnum->Release();
 
-						// To create an instance of the filter, do the following:
-						hr = pMoniker->BindToObject(NULL, NULL, IID_IBaseFilter, (void**)ret);
-						return 0;
-						break;
-						// Now add the filter to the graph. 
-						//Remember to release pFilter later.
+						HRESULT hr = pMoniker->BindToObject(NULL, NULL, IID_IBaseFilter, (void**)ret);
+
+						pMoniker->Release();
+
+						return hr;
 					}
 				}
 				VariantClear(&varName);
@@ -60,15 +70,34 @@ HRESULT getVideoCaptureDevice(IBaseFilter **ret)
 	}
 	pSysDevEnum->Release();
 
-	return 1;
+	return -1;
 }
 
 Capture::Capture()
 {
-	CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void **)&graph);
-	graph->QueryInterface(IID_IMediaControl, (void **)&control);
-	graph->QueryInterface(IID_IMediaEvent, (void **)&event);
-	graph->QueryInterface(IID_IVideoWindow, (void **)&video);
+	if(FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void **)&graph)))
+	{
+		printf("Failed to create graph!\n");
+		return;
+	}
+
+	if(FAILED(graph->QueryInterface(IID_IMediaControl, (void **)&control)))
+	{
+		printf("Failed to create media control\n");
+		return;
+	}
+
+	if(FAILED(graph->QueryInterface(IID_IMediaEvent, (void **)&event)))
+	{
+		printf("Failed to create media event\n");
+		return;
+	}
+
+	if(FAILED(graph->QueryInterface(IID_IVideoWindow, (void **)&video)))
+	{
+		printf("Failed to create video window\n");
+		return;
+	}
 
 	if(!createGraph())
 	{
@@ -87,64 +116,36 @@ Capture::~Capture()
 int Capture::runGraph()
 {
 	system("cls");
+
 	printf("Starting Graph...");
-	HRESULT hr;
-	hr = control->Run();
-//	long evCode;
-//	event->WaitForCompletion(INFINITE, &evCode);
+	
+	if(FAILED(control->Run()))
+	{
+		printf("Failed to run graph!\n");
+		return 1;
+	}
+
 	return 0;
 }
 
 int Capture::createGraph()
 {
-	IBaseFilter *send, *cap;
-	IPin *sendIn;
-	IPin *capOut;
-	IPin *encIn;
-	IPin *encOut;
-	IPin *colorIn;
-	IPin *colorOut;
+	IBaseFilter *send, *cap, *encoder;
+	IVP8Encoder *encoderControl;
+	IPin *sendIn, *capOut, *encIn, *encOut, *colorIn, *colorOut, *pinOut;
 	IEnumPins *pins;
 	HRESULT hr;
 	PIN_INFO pi;
 
-	if(getVideoCaptureDevice(&cap))
-	{
-		printf("No video capture devices found!\n");
-		return 1;
-	}
-	graph->AddFilter(cap, NULL);
-
-	IPin *pinOut;
-	cap->EnumPins(&pins);
-
-	do // Find the first output
-	{
-		pins->Next(1, &capOut, NULL);
-		capOut->QueryPinInfo(&pi);
-	}
-	while(pi.dir != PINDIR_OUTPUT);
-
-	pins->Release();
-
-	hr = CoCreateInstance(CLSID_VideoSpringSend, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&send);
-	hr = graph->AddFilter(send, NULL);
-
-	IVP8Encoder *encoderControl;
-	IBaseFilter *encoder;
-
-	hr = CoCreateInstance(CLSID_VP8Encoder, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&encoder);
-	encoder->QueryInterface(IID_IVP8Encoder, (void**)&encoderControl);
-	encoderControl->SetErrorResilient(1);
-	//encoderControl->SetKeyframeMode(kKeyframeModeDisabled);
-	
-	system("cls");
-
-	printf("ENCODER SETTINGS\n\n");
+	IAMStreamConfig *config;
 
 	int deadline = 0;
 	int bitrate = 0;
 	int threadcount = 0;
+
+	system("cls");
+
+	printf("ENCODER SETTINGS\n\n");
 
 	printf("Enter deadline: ");
 	scanf("%d", &deadline);
@@ -153,63 +154,217 @@ int Capture::createGraph()
 	printf("Enter Thread Count: ");
 	scanf("%d", &threadcount);
 
-	encoderControl->SetDeadline(deadline);
-	encoderControl->SetTargetBitrate(bitrate);
-	encoderControl->SetThreadCount(threadcount);
-	encoderControl->SetEndUsage(kEndUsageCBR);
-	encoderControl->ApplySettings();
-
-	hr = graph->AddFilter(encoder, NULL);
-
-//	hr = CoCreateInstance(CLSID_CColorConvertDMO, NULL, CLSCTX_INPROC, IID_IMediaObject, (void**)&colorConvert);
-//	hr = graph->AddFilter(colorConvert, NULL);
-
-//	hr = colorConvert->FindPin(L"in0",  &colorIn);
-//	hr = colorConvert->FindPin(L"out0",  &colorOut);
-
-	hr = encoder->EnumPins(&pins);
-	hr = pins->Next(1, &encIn, NULL);
-	hr = pins->Next(1, &encOut, NULL);
-	hr = send->FindPin(L"VideoSpringSend Input Pin", &sendIn);
-
-	IAMStreamConfig *config;
-
-	hr = capOut->QueryInterface(IID_IAMStreamConfig, (void**)&config);
-
-	if(hr == S_OK)
+	if(getVideoCaptureDevice(&cap))
 	{
-		AM_MEDIA_TYPE *format;
-		VIDEO_STREAM_CONFIG_CAPS caps;
+		printf("No video capture devices found!\n");
+		return 1;
+	}
 
-		int numCaps, capSize;
-		config->GetNumberOfCapabilities(&numCaps, &capSize);
-		system("cls");
-		printf("CHOOSE OUTPUT FORMAT\n\n");
-		for(int i = 0; i < numCaps; i++)
+	if(FAILED(graph->AddFilter(cap, NULL)))
+	{
+		printf("Failed to add capture filter to graph!\n");
+		return 1;
+	}
+
+	if(FAILED(cap->EnumPins(&pins)))
+	{
+		printf("Failed to enumerate capture filter pins!\n");
+		return 1;
+	}
+
+	do
+	{
+		if(FAILED(pins->Next(1, &capOut, NULL)))
 		{
-			config->GetStreamCaps(i, &format, (BYTE*)&caps);
+			printf("Failed to get next pin!\n");
+			continue;
+		}
 
-			VIDEOINFOHEADER *video = (VIDEOINFOHEADER*)format->pbFormat;
+		if(FAILED(capOut->QueryPinInfo(&pi)))
+		{
+			printf("Failed to get pin info!\n");
+			continue;
+		}
+	}
+	while(pi.dir != PINDIR_OUTPUT);
 
-			if(video->bmiHeader.biBitCount == 24) continue;
+	if(FAILED(pins->Release()))
+	{
+		printf("Failed to release pins!\n");
+		return 1;
+	}
 
-			char buff[1024];
+	if(FAILED(CoCreateInstance(CLSID_VideoSpringSend, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&send)))
+	{
+		printf("Failed to create send filter!\n");
+		return 1;
+	}
 
-			printf("%dx%d @ %d-bit y/n: ", video->bmiHeader.biWidth, video->bmiHeader.biHeight, video->bmiHeader.biBitCount);
+	if(FAILED(graph->AddFilter(send, NULL)))
+	{
+		printf("Failed to add send filter to graph!\n");
+		return 1;
+	}
 
-			scanf("%s", buff);
-			if(buff[0] == 'y')
+	if(FAILED(CoCreateInstance(CLSID_VP8Encoder, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&encoder)))
+	{
+		printf("Failed to load encoding filter!\n");
+		return 1;
+	}
+
+	if(FAILED(encoder->QueryInterface(IID_IVP8Encoder, (void**)&encoderControl)))
+	{
+		printf("Failed to get encoder control!\n");
+		return 1;
+	}
+	
+	if(FAILED(graph->AddFilter(encoder, NULL)))
+	{
+		printf("Failed to add encoder to graph!\n");
+		return 1;
+	}
+
+	if(FAILED(encoder->EnumPins(&pins)))
+	{
+		printf("Failed to enumerate encoder pins!\n");
+		return 1;
+	}
+
+	if(FAILED(pins->Next(1, &encIn, NULL)))
+	{
+		printf("Failed to get next encoder pin!");
+		return 1;
+	}
+
+	if(FAILED(pins->Next(1, &encOut, NULL)))
+	{
+		printf("Failed to get next encoder pin!");
+		return 1;
+	}
+
+	if(FAILED(send->FindPin(L"VideoSpringSend Input Pin", &sendIn)))
+	{
+		printf("Failed to find input pin!\n");
+		return 1;
+	}
+
+	if(FAILED(capOut->QueryInterface(IID_IAMStreamConfig, (void**)&config)))
+	{
+		printf("Failed to get capture pin config!\n");
+		return 1;
+	}
+
+	AM_MEDIA_TYPE *format;
+	VIDEO_STREAM_CONFIG_CAPS caps;
+
+	int numCaps, capSize;
+
+	if(FAILED(config->GetNumberOfCapabilities(&numCaps, &capSize)))
+	{
+		printf("Failed to get number of capabilities!\n");
+		return 1;
+	}
+
+	system("cls");
+
+	printf("CHOOSE OUTPUT FORMAT\n\n");
+
+	for(int i = 0; i < numCaps; i++)
+	{
+		if(FAILED(config->GetStreamCaps(i, &format, (BYTE*)&caps)))
+		{
+			printf("Failed to get stream caps!\n");
+			continue;
+		}
+
+		VIDEOINFOHEADER *video = (VIDEOINFOHEADER*)format->pbFormat;
+
+		char buff[1024];
+
+		printf("%dx%d @ %d-bit y/n: ", video->bmiHeader.biWidth, video->bmiHeader.biHeight, video->bmiHeader.biBitCount);
+
+		scanf("%s", buff);
+		if(buff[0] == 'y')
+		{
+			if(FAILED(config->SetFormat(format)))
 			{
-				hr = config->SetFormat(format);
-				break;
+				printf("Failed to set format!\n");
+				continue;
 			}
+			break;
 		}
 	}
 
+	encoderControl->SetDeadline(1);
+	encoderControl->SetTargetBitrate(bitrate);
+	encoderControl->SetThreadCount(threadcount);
+	encoderControl->SetEndUsage(kEndUsageVBR);
+	encoderControl->SetErrorResilient(1);
+	encoderControl->SetKeyframeMode(kKeyframeModeDisabled);
+//	encoderControl->SetForceKeyframe();
+	encoderControl->ApplySettings();
 
-	hr = graph->Connect(capOut, encIn);
-//	hr = graph->Connect(colorOut, encIn);
-	hr = graph->Connect(encOut, sendIn);
+	IBaseFilter *colorConvert;
+
+	if(SUCCEEDED(CoCreateInstance(CLSID_DMOWrapperFilter, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&colorConvert)))
+	{
+		IDMOWrapperFilter *colorConvertIface;
+		
+		if(FAILED(colorConvert->QueryInterface(IID_IDMOWrapperFilter, (void **)&colorConvertIface)))
+		{
+			printf("Failed to get color convert interface!\n");
+			return 1;
+		}
+
+		if(FAILED(colorConvertIface->Init(CLSID_CColorConvertDMO, DMOCATEGORY_VIDEO_EFFECT)))
+		{
+			printf("Failed to init color converter!\n");
+			return 1;
+		}
+
+		if(FAILED(graph->AddFilter(colorConvert, NULL)))
+		{
+			printf("Failed to add color filter to graph!\n");
+			return 1;
+		}
+
+		if(FAILED(colorConvert->FindPin(L"in0",  &colorIn)))
+		{
+			printf("Failed to find input pin!\n");
+			return 1;
+		}
+
+		if(FAILED(colorConvert->FindPin(L"out0",  &colorOut)))
+		{
+			printf("Failed to find output pin!\n");
+			return 1;
+		}
+
+		if(FAILED(graph->Connect(capOut, colorIn)))
+		{
+			printf("Failed to connect capture filter to color converter!\n");
+			return 1;
+		}
+
+		if(FAILED(graph->Connect(colorOut, encIn)))
+		{
+			printf("Failed to connect color converter to encoder!\n");
+			return 1;
+		}
+	}
+	else
+	{
+		if(FAILED(graph->Connect(capOut, encIn)))
+		{
+			printf("Failed to connect capture filter to encoder!\n");
+			return 1;
+		}
+	}
+	
+	if(FAILED(graph->Connect(encOut, sendIn)))
+	{
+		printf("Failed to connect encoder to sender!\n");
+	}
 
 	return 0;
 }

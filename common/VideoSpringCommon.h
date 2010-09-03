@@ -7,6 +7,9 @@
 #include <commctrl.h>
 #include <mmsystem.h>
 #include <initguid.h>
+#include <Wmcodecdsp.h>
+#include <dmodshow.h>
+#include <dmo.h>
 #include <strsafe.h>
 #include <DShow.h>
 #include "vp8encoderidl.h"
@@ -23,9 +26,10 @@ DEFINE_GUID(CLSID_VideoSpringSend,
 DEFINE_GUID(CLSID_VP8Encoder,
 0xED3110F5, 0x5211, 0x11DF, 0x94, 0xAF, 0x00, 0x26, 0xB9, 0x77, 0xEE, 0xAA);
 #endif*/
-
-//DEFINE_GUID(CLSID_CColorConvertDMO,
-//0x98230571, 0x0087, 0x4204, 0xB0, 0x20, 0x32, 0x82, 0x53, 0x8E, 0x57, 0xD3);
+/*
+DEFINE_GUID(CLSID_CColorConvertDMO,
+0x98230571, 0x0087, 0x4204, 0xB0, 0x20, 0x32, 0x82, 0x53, 0x8E, 0x57, 0xD3);
+*/
 #ifndef OUR_GUID_ENTRY
     #define OUR_GUID_ENTRY(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8) \
     DEFINE_GUID(name, l, w1, w2, b1, b2, b3, b4, b5, b6, b7, b8);
@@ -45,7 +49,8 @@ enum
 	C_SET_CLIENT_RECV,
 	C_SET_READY,
 	C_SET_FORMAT,
-	C_BROADCAST
+	C_BROADCAST,
+	C_RECEIVE
 };
 
 struct MessageHeader
