@@ -113,7 +113,7 @@ CVideoSpringRecvPin::CVideoSpringRecvPin(HRESULT *phr, CSource *pFilter)
 		m.header.command = C_SET_CLIENT_RECV;
 		m.header.length = sizeof(DWORD);
 
-		DWORD pid = GetProcessId(NULL);
+		DWORD pid = GetCurrentProcessId();
 		m.data = (BYTE*)&pid;
 
 		sendMessage(server, &m);
@@ -255,25 +255,39 @@ HRESULT CVideoSpringRecvPin::FillBuffer(IMediaSample *pSample)
 
     VIDEOINFOHEADER *pVih = (VIDEOINFOHEADER*)m_mt.pbFormat;
 
-	fd_set read_set;
-
-	FD_ZERO(&read_set);
-	FD_SET(server, &read_set);
-	if(select(0, &read_set, NULL, NULL, 0) < 1)
+	do
 	{
-		MessageBox(NULL, "Select error", "", MB_OK);
-		return ERROR;
-	}
-	
-	if(FD_ISSET(server, &read_set) || frame == 1)
-	{
-	
 		Message m;
+		m.header.command = C_RECEIVE;
+		m.header.length = 0;
+		sendMessage(server, &m);
 
-		pSample->GetSize();
-		receiveMessage(server, m);
-		memcpy(pData, m.data, m.header.length);
+		fd_set read_set;
+
+		FD_ZERO(&read_set);
+		FD_SET(server, &read_set);
+		if(select(0, &read_set, NULL, NULL, 0) < 1)
+		{
+			return ERROR;
+		}
+	
+		if(FD_ISSET(server, &read_set) || frame == 1)
+		{
+			pSample->GetSize();
+			receiveMessage(server, m);
+
+			if(m.header.length > 0)
+			{
+				memcpy(pData, m.data, m.header.length);
+				break;
+			}
+		}
+		else
+		{
+			break;
+		}
 	}
+	while(1);
 
 	frame++;
 

@@ -2,10 +2,29 @@
 
 Player::Player()
 {
-	CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void **)&graph);
-	graph->QueryInterface(IID_IMediaControl, (void **)&control);
-	graph->QueryInterface(IID_IMediaEvent, (void **)&event);
-	graph->QueryInterface(IID_IVideoWindow, (void **)&video);
+	if(FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void **)&graph)))
+	{
+		printf("Failed to create graph!\n");
+		return;
+	}
+
+	if(FAILED(graph->QueryInterface(IID_IMediaControl, (void **)&control)))
+	{
+		printf("Failed to create media control!\n");
+		return;
+	}
+
+	if(FAILED(graph->QueryInterface(IID_IMediaEvent, (void **)&event)))
+	{
+		printf("Failed to create media event!\n");
+		return;
+	}
+
+	if(FAILED(graph->QueryInterface(IID_IVideoWindow, (void **)&video)))
+	{
+		printf("Failed to create video window!\n");
+		return;
+	}
 
 	createGraph();
 	runGraph();
@@ -32,13 +51,35 @@ int Player::createGraph()
 	IEnumPins *pins;
 	IPin *pinOut;
 
-	CoCreateInstance(CLSID_VideoSpringRecv, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&recv);
+	if(FAILED(CoCreateInstance(CLSID_VideoSpringRecv, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&recv)))
+	{
+		printf("Failed to create receive filter!\n");
+		return 1;
+	}
 
-	recv->EnumPins(&pins);
-	pins->Next(1, &pinOut, NULL);
+	if(FAILED(recv->EnumPins(&pins)))
+	{
+		printf("Failed to enumerate pins!\n");
+		return 1;
+	}
 
-	graph->AddFilter(recv, NULL);
-	graph->Render(pinOut);
+	if(FAILED(pins->Next(1, &pinOut, NULL)))
+	{
+		printf("Failed to get next pin!\n");
+		return 1;
+	}
+
+	if(FAILED(graph->AddFilter(recv, NULL)))
+	{
+		printf("Failed to add receive filter to graph!\n");
+		return 1;
+	}
+
+	if(FAILED(graph->Render(pinOut)))
+	{
+		printf("Failed to render output pin!\n");
+		return 1;
+	}
 
 	pinOut->Release();
 	pins->Release();

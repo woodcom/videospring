@@ -314,6 +314,7 @@ HRESULT CVideoSpringSendInputPin::SetMediaType(const CMediaType *pmt)
 //
 HRESULT CVideoSpringSendInputPin::Active(void)
 {
+	closesocket(server);
 	server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
 	FILE *f = fopen("c:\\VideoSpring.ini", "r");
@@ -343,7 +344,7 @@ HRESULT CVideoSpringSendInputPin::Active(void)
 	m.header.command = C_SET_PRESENTER_SEND;
 	m.header.length = sizeof(DWORD);
 
-	DWORD pid = GetProcessId(NULL);
+	DWORD pid = GetCurrentProcessId();
 	m.data = (BYTE*)&pid;
 
 	if(sendMessage(server, &m) != 0)
