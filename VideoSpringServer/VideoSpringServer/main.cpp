@@ -8,6 +8,15 @@ long total_clients = 0;
 fd_set read_set, write_set, except_set;
 Client *client_head = NULL;
 
+#define BUFF_SIZE 10
+
+struct FrameBuff
+{
+	long number;
+	BYTE *frame;
+	long frameLength;
+};
+
 class Client
 {
 	public:
@@ -17,8 +26,7 @@ class Client
 		int wait;
 		BYTE *firstFrame;
 		long firstFrameLength;
-		BYTE *frame;
-		long frameLength;
+		FrameBuff frames[BUFF_SIZE];
 
 	private:
 		SOCKET socket;  //accepted socket
@@ -45,7 +53,7 @@ class Client
 				printf("\nType: Presenter\n");
 				memcpy(&pid, m.data, sizeof(DWORD));
 				firstFrameLength = 0;
-				HeapFree(GetProcessHeap(), 0, firstFrame);
+				free(firstFrame);
 				type = 0;
 				break;
 			case C_SET_CLIENT_RECV:
@@ -82,13 +90,20 @@ class Client
 				if(firstFrameLength == 0)
 				{
 					firstFrameLength = m.header.length;
-					firstFrame = (BYTE*)HeapAlloc(GetProcessHeap(), 0, firstFrameLength);
+					firstFrame = (BYTE*)malloc(firstFrameLength);
 					memcpy(firstFrame, m.data, firstFrameLength);
+					lastFrame = 0;
 				}
-				frameLength = m.header.length;
-				frame = (BYTE*)HeapAlloc(GetProcessHeap(), 0, frameLength);
-				memcpy(frame, m.data, frameLength);
-				lastFrame++;
+				else
+				{
+					lastFrame++;
+				}
+				frames[lastFrame % BUFF_SIZE].frameLength = m.header.length;
+				free(frames[lastFrame % BUFF_SIZE].frame);
+				frames[lastFrame % BUFF_SIZE].frame = (BYTE*)malloc(m.header.length);
+				memcpy(frames[lastFrame % BUFF_SIZE].frame, m.data, m.header.length);
+				frames[lastFrame % BUFF_SIZE].number = lastFrame;
+				wait = 1;
 				break;
 			case C_RECEIVE:
 			{
@@ -97,33 +112,55 @@ class Client
 				{
 					if(c->GetType() == 0 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid))
 					{
-						if(renderedFrame < c->lastFrame)
+						c->wait = 0;
+						Message m;
+						if(firstFrameLength == 0)
 						{
-							Message m;
-							if(firstFrameLength == 0)
-							{
-								firstFrameLength = c->firstFrameLength;
-								m.header.length = c->firstFrameLength;
-								m.data = c->firstFrame;
-							}
-							else
-							{
-								m.header.length = c->frameLength;
-								m.data = c->frame;
-							}
-							renderedFrame++;
-							sendMessage(socket, &m);
-							return;
+							firstFrameLength = c->firstFrameLength;
+							m.header.length = c->firstFrameLength;
+							m.data = c->firstFrame;
+							renderedFrame = 0;
 						}
 						else
 						{
-							Message m;
-							m.header.command = 0;
-							m.header.length = 0;
-							m.data = NULL;
-							sendMessage(socket, &m);
-							return;
+							BYTE *frame = NULL;
+							long frameLength = 0;
+							long newFrame = 0;
+							for(int n = 0; n < BUFF_SIZE; n++)
+							{
+								if(c->frames[n].number == renderedFrame + 1)
+								{
+									m.data = c->frames[n].frame;
+									m.header.length = c->frames[n].frameLength;
+									newFrame = renderedFrame + 1;
+									break;
+								}
+								if(c->frames[n].number == c->lastFrame)
+								{
+									m.data = c->frames[n].frame;
+									m.header.length = c->frames[n].frameLength;
+									newFrame = c->lastFrame;
+								}
+							}
+							if(newFrame == 0 || newFrame == renderedFrame)
+							{
+								Message m;
+								m.header.command = 0;
+								m.header.length = 0;
+								m.data = NULL;
+								sendMessage(socket, &m);
+								return;
+							}
+
+							if(newFrame == c->lastFrame && newFrame != renderedFrame + 1)
+							{
+								printf("%d frames dropped\n", newFrame - renderedFrame);
+							}
+
+							renderedFrame = newFrame;
 						}
+						sendMessage(socket, &m);
+						return;
 					}
 					c = c->GetNext();
 				}
@@ -136,8 +173,8 @@ class Client
 			}
 			case C_SET_FORMAT:
 				printf("\nFormat Received\n");
-				HeapFree(GetProcessHeap(), 0, format);
-				format = (BYTE*)HeapAlloc(GetProcessHeap(), 0, m.header.length);
+				free(format);
+				format = (BYTE*)malloc(m.header.length);
 				memcpy(format, m.data, m.header.length);
 				formatLength = m.header.length;
 				wait = 1;
@@ -159,7 +196,7 @@ class Client
 
 	 Client *add(Client *c)
 	 {
-		 printf("\nAdding Client #%d\n", c->id);
+		 printf("\nAdding Client #%ld\n", c->id);
 		Client *cur = this;
 
 		while(cur->next != NULL)
@@ -174,7 +211,7 @@ class Client
 
 	 Client *del(Client *c)
 	 {
-		 printf("\nDeleting Client #%d\n", c->id);
+		 printf("\nDeleting Client #%ld\n", c->id);
 		 Client * cur = client_head;
 
 		 while(cur->next != NULL && cur->next != c)
@@ -234,11 +271,15 @@ class Client
 		wait = 0;
 		firstFrameLength = 0;
 		firstFrame = NULL;
-		frameLength = 0;
-		frame = NULL;
 		lastFrame = 0;
 		renderedFrame = 0;
-		printf("\nCreated Client #%d\n", id);
+		for(int n = 0 ; n < BUFF_SIZE; n++)
+		{
+			frames[n].number = -1;
+			frames[n].frame = NULL;
+			frames[n].frameLength = 0;
+		}
+		printf("\nCreated Client #%ld\n", id);
      }
 
      //destructor
@@ -250,7 +291,7 @@ class Client
      }
 };
 
-void InitSets(SOCKET ListenSocket) 
+int InitSets(SOCKET ListenSocket) 
 {
      //Initialize
 
@@ -266,30 +307,40 @@ void InitSets(SOCKET ListenSocket)
      //Iterate the client context list and assign the sockets to Sets
 
      Client *c = client_head;
-
+	int max = ListenSocket;
      while(c != NULL)
      {
           //FD_SET(c->GetSocket(), &write_set);
           FD_SET(c->GetSocket(), &read_set);
+	if(c->GetSocket() > max) max = c->GetSocket();
        //   FD_SET(c->GetSocket(), &except_set); 
 
           //Move to next node on the list
 
           c = c->GetNext();
      }
+	return max;
 }
 
 void AcceptConnections(SOCKET ListenSocket)
 {
-     while (true)
+	printf("Accepting Connections...\n");
+     while(1)
      {
-          InitSets(ListenSocket);
+          int max = InitSets(ListenSocket);
+#ifdef WIN32
           if (select(0, &read_set, &write_set, &except_set, 0) > 0) 
           {
+#else
+  //        timeval t;
+//          memset(&t, 0, sizeof(timeval));
+          if (select(max + 1, &read_set, &write_set, &except_set, 0) != -1) 
+          {
+#endif
                if (FD_ISSET(ListenSocket, &read_set)) 
                {
                     sockaddr_in clientaddr;
-                    int clientlen = sizeof(sockaddr_in);
+                    socklen_t clientlen = sizeof(sockaddr_in);
 
                     SOCKET socket = accept(ListenSocket, (sockaddr*)&clientaddr, &clientlen);
                     if(socket == INVALID_SOCKET)
@@ -299,8 +350,8 @@ void AcceptConnections(SOCKET ListenSocket)
 
                     printf("\nClient connected from: %s\n", inet_ntoa(clientaddr.sin_addr)); 
 
-                    u_long no_block = 1;
-                    ioctlsocket(socket, FIONBIO, &no_block);
+                    //u_long no_block = 1;
+                    //ioctlsocket(socket, FIONBIO, &no_block);
                     Client *c = new Client(socket, clientaddr);
 
 					if(client_head == NULL)
@@ -339,7 +390,7 @@ void AcceptConnections(SOCKET ListenSocket)
 						int error = 0;
 						if((error = receiveMessage(c->GetSocket(), m)) != 0)
 						{
-							printf("Client #%d Disconnected %d", c->id, error);
+							printf("Client #%ld Disconnected %d", c->id, error);
 							if(c == client_head)
 							{
 								Client *tmp = client_head;
@@ -382,8 +433,8 @@ void AcceptConnections(SOCKET ListenSocket)
           }
           else //select
           {
-               printf("\nError executing select()");
-               return;
+              // printf("\nError executing select()");
+               //return;
           }
      }
 }
@@ -391,8 +442,10 @@ void AcceptConnections(SOCKET ListenSocket)
 
 int main(int argc, char **argv)
 {
+	#ifdef WIN32
 	WSADATA data;
 	WSAStartup(MAKEWORD(2, 2), &data);
+	#endif
 
 	SOCKET server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -401,32 +454,43 @@ int main(int argc, char **argv)
 		printf("Error creating socket.\n");
 	}
 
-	SOCKADDR_IN serveraddr;
+	sockaddr_in serveraddr;
 	
-	memset((void*)&serveraddr,0,sizeof(SOCKADDR_IN));
+	memset((void*)&serveraddr,0,sizeof(sockaddr_in));
 
 	serveraddr.sin_family = AF_INET;
  	serveraddr.sin_addr.s_addr = INADDR_ANY;
 	serveraddr.sin_port = htons(1234);
 
-	if (bind(server, (SOCKADDR *)&serveraddr, sizeof(SOCKADDR)) == SOCKET_ERROR)
+	if (bind(server, (sockaddr *)&serveraddr, sizeof(sockaddr)) == SOCKET_ERROR)
 	{
 		printf("Socket bind failed!\n");
+		#ifdef WIN32
 		WSACleanup();
 		system("pause");
+		#endif
 		return 1;
 	}
 
 	if(listen(server, SOMAXCONN) != 0)
 	{
 		printf("Socket listen failed!\n");
+		#ifdef WIN32
 		WSACleanup();
 		system("pause");
+		#endif
 		return 1;
+	}
+	else
+	{
+		printf("Listening on port 1234.\n");
 	}
 
 	AcceptConnections(server);
 
+	#ifdef WIN32
 	system("pause");
+	#endif
 	return 0;
 }
+
