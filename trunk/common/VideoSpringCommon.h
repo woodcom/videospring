@@ -2,6 +2,8 @@
 
 #define H_VIDSPRINGCOMMON 1
 
+#ifdef WIN32
+
 #include <WinSock2.h>
 #include <streams.h>
 #include <commctrl.h>
@@ -41,6 +43,32 @@ OUR_GUID_ENTRY(MEDIASUBTYPE_VP8,
 OUR_GUID_ENTRY(MEDIASUBTYPE_VP8_MUX,
 0xED3110EB, 0x5211, 0x11DF, 0x94, 0xAF, 0x00, 0x26, 0xB9, 0x77, 0xEE, 0xAA)
 
+#else
+	#include <sys/types.h>
+	#include <sys/socket.h>
+	#include <netinet/in.h>
+	#include <stdio.h>
+	#include <stdlib.h>
+	#include <string.h>
+	#include <arpa/inet.h>
+	#include <unistd.h>
+	#include <errno.h>
+
+	typedef uint32_t DWORD;
+	typedef unsigned char BYTE;
+	typedef int SOCKET;
+
+	#ifndef NULL
+		#define NULL 0
+	#endif
+
+	#define SOCKET_ERROR -1
+	#define INVALID_SOCKET -1
+	#define NOERROR 0
+	#define WSAEWOULDBLOCK ENOTBLK
+	#define closesocket(socket) close(socket)
+#endif
+
 enum
 {
 	C_SET_PRESENTER_SEND,
@@ -55,8 +83,8 @@ enum
 
 struct MessageHeader
 {
-	int command;
-	long length;
+	uint16_t command;
+	uint32_t length;
 };
 
 struct Message

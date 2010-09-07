@@ -18,9 +18,14 @@ int sendMessage(SOCKET s, Message *m)
 		{
 			bytes = send(s, (char*)&m->header + bytesSent, size, 0);
 
-			if(bytes < 1)
+			if(bytes == -1)
 			{
+				printf("Send in sendMessage failed!\n");
+				#ifdef WIN32
 				int error = WSAGetLastError();
+				#else
+				int error = errno;
+				#endif
 
 				if(error == WSAEWOULDBLOCK)
 				{
@@ -57,9 +62,14 @@ int sendMessage(SOCKET s, Message *m)
 			{
 				bytes = send(s, (char*)m->data + bytesSent, size, 0);
 
-				if(bytes < 1)
+				if(bytes == -1)
 				{
+					printf("Send in sendMessage failed (body)!\n");
+					#ifdef WIN32
 					int error = WSAGetLastError();
+					#else
+					int error = errno;
+					#endif
 
 					if(error == WSAEWOULDBLOCK)
 					{
@@ -98,9 +108,14 @@ int receiveMessage(SOCKET s, Message &m)
 		{
 			bytes = recv(s, (char*)&m.header + bytesReceived, size, 0);
 
-			if(bytes < 1)
+			if(bytes == -1)
 			{
+				printf("Recv in recvMessage failed!\n");
+				#ifdef WIN32
 				int error = WSAGetLastError();
+				#else
+				int error = errno;
+				#endif
 
 				if(error == WSAEWOULDBLOCK)
 				{
@@ -119,12 +134,12 @@ int receiveMessage(SOCKET s, Message &m)
 		bytesReceived += bytes;
 	}
 	while(bytesReceived < sizeof(MessageHeader));
-
+	
 	if(m.header.length > 0)
 	{
 		bytesReceived = 0;
 
-		m.data = (BYTE*)HeapAlloc(GetProcessHeap(), 0, m.header.length);
+		m.data = (BYTE*)malloc(m.header.length);
 
 		do
 		{
@@ -136,9 +151,14 @@ int receiveMessage(SOCKET s, Message &m)
 			{
 				bytes = recv(s, (char*)m.data + bytesReceived, size, 0);
 
-				if(bytes < 1)
+				if(bytes == -1)
 				{
+					printf("Recv in recvMessage failed(body)\n");
+					#ifdef WIN32
 					int error = WSAGetLastError();
+					#else
+					int error = errno;
+					#endif
 
 					if(error == WSAEWOULDBLOCK)
 					{
@@ -166,8 +186,8 @@ int deleteMessage(Message &m)
 {
 	try
 	{
-		//if(m.header.length > 0 && m.data != NULL)
-			//HeapFree(GetProcessHeap(), 0, m.data);
+		if(m.header.length > 0 && m.data != NULL)
+			free(m.data);
 	}
 	catch(...)
 	{
