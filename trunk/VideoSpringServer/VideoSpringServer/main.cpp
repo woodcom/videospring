@@ -103,7 +103,10 @@ class Client
 				frames[lastFrame % BUFF_SIZE].frame = (BYTE*)malloc(m.header.length);
 				memcpy(frames[lastFrame % BUFF_SIZE].frame, m.data, m.header.length);
 				frames[lastFrame % BUFF_SIZE].number = lastFrame;
-				wait = 1;
+				if(lastFrame > BUFF_SIZE - 2)
+				{
+					wait = 1;
+				}
 				break;
 			case C_RECEIVE:
 			{
@@ -340,7 +343,11 @@ void AcceptConnections(SOCKET ListenSocket)
                if (FD_ISSET(ListenSocket, &read_set)) 
                {
                     sockaddr_in clientaddr;
+#ifdef WIN32
+                    int clientlen = sizeof(sockaddr_in);
+#else
                     socklen_t clientlen = sizeof(sockaddr_in);
+#endif
 
                     SOCKET socket = accept(ListenSocket, (sockaddr*)&clientaddr, &clientlen);
                     if(socket == INVALID_SOCKET)

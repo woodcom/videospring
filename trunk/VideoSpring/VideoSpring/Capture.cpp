@@ -295,12 +295,17 @@ int Capture::createGraph()
 		}
 	}
 
-	encoderControl->SetDeadline(1);
+	encoderControl->SetDropframeThreshold(50);
+	encoderControl->SetTokenPartitions(3);
+	encoderControl->SetUndershootPct(50);
+	encoderControl->SetDeadline(deadline);
 	encoderControl->SetTargetBitrate(bitrate);
 	encoderControl->SetThreadCount(threadcount);
 	encoderControl->SetEndUsage(kEndUsageVBR);
 	encoderControl->SetErrorResilient(1);
-	encoderControl->SetKeyframeMode(kKeyframeModeDisabled);
+	encoderControl->SetKeyframeMode(kKeyframeModeAuto);
+//	encoderControl->SetKeyframeMinInterval(1);
+//	encoderControl->SetKeyframeMaxInterval(1);
 //	encoderControl->SetForceKeyframe();
 	encoderControl->ApplySettings();
 
@@ -313,36 +318,42 @@ int Capture::createGraph()
 		if(FAILED(colorConvert->QueryInterface(IID_IDMOWrapperFilter, (void **)&colorConvertIface)))
 		{
 			printf("Failed to get color convert interface!\n");
+			goto standard;
 			return 1;
 		}
 
 		if(FAILED(colorConvertIface->Init(CLSID_CColorConvertDMO, DMOCATEGORY_VIDEO_EFFECT)))
 		{
 			printf("Failed to init color converter!\n");
+			goto standard;
 			return 1;
 		}
 
 		if(FAILED(graph->AddFilter(colorConvert, NULL)))
 		{
 			printf("Failed to add color filter to graph!\n");
+			goto standard;
 			return 1;
 		}
 
 		if(FAILED(colorConvert->FindPin(L"in0",  &colorIn)))
 		{
 			printf("Failed to find input pin!\n");
+			goto standard;
 			return 1;
 		}
 
 		if(FAILED(colorConvert->FindPin(L"out0",  &colorOut)))
 		{
 			printf("Failed to find output pin!\n");
+			goto standard;
 			return 1;
 		}
 
 		if(FAILED(graph->Connect(capOut, colorIn)))
 		{
 			printf("Failed to connect capture filter to color converter!\n");
+			goto standard;
 			return 1;
 		}
 
@@ -354,6 +365,7 @@ int Capture::createGraph()
 	}
 	else
 	{
+		standard:
 		if(FAILED(graph->Connect(capOut, encIn)))
 		{
 			printf("Failed to connect capture filter to encoder!\n");

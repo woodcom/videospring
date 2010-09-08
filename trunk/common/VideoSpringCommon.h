@@ -14,7 +14,10 @@
 #include <dmo.h>
 #include <strsafe.h>
 #include <DShow.h>
+#include <d3d9.h>
+#include <vmr9.h>
 #include "vp8encoderidl.h"
+#include "vp8decoderidl.h"
 
 // {34C5751E-A6E1-4A6A-895E-BC4797001848}
 DEFINE_GUID(CLSID_VideoSpringRecv, 
@@ -83,8 +86,13 @@ enum
 
 struct MessageHeader
 {
+#ifdef WIN32
+	int command;
+	long length;
+#else
 	uint16_t command;
 	uint32_t length;
+#endif
 };
 
 struct Message
