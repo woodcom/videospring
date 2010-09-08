@@ -77,6 +77,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\..\common\VideoSpringCommon.cpp" />
+    <ClCompile Include="..\..\common\vp8decoderidl.c" />
     <ClCompile Include="..\..\common\vp8encoderidl.c" />
     <ClCompile Include="Capture.cpp" />
     <ClCompile Include="main.cpp" />
@@ -84,6 +85,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\common\VideoSpringCommon.h" />
+    <ClInclude Include="..\..\common\vp8decoderidl.h" />
     <ClInclude Include="Capture.h" />
     <ClInclude Include="Player.h" />
     <ClInclude Include="resource.h" />

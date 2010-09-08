@@ -30,6 +30,9 @@
     <ClCompile Include="..\..\common\vp8encoderidl.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\common\vp8decoderidl.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\common\VideoSpringCommon.h">
@@ -45,6 +48,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\common\vp8decoderidl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
