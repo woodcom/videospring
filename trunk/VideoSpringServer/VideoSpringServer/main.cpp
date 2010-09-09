@@ -8,7 +8,7 @@ long total_clients = 0;
 fd_set read_set, write_set, except_set;
 Client *client_head = NULL;
 
-#define BUFF_SIZE 10
+#define BUFF_SIZE 1024
 
 struct FrameBuff
 {
@@ -105,7 +105,7 @@ class Client
 				frames[lastFrame % BUFF_SIZE].number = lastFrame;
 				if(lastFrame > BUFF_SIZE - 2)
 				{
-					wait = 1;
+			//		wait = 1;
 				}
 				break;
 			case C_RECEIVE:
