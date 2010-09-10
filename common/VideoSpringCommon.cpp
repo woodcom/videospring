@@ -18,21 +18,25 @@ int sendMessage(SOCKET s, Message *m)
 		{
 			bytes = send(s, (char*)&m->header + bytesSent, size, 0);
 
-			if(bytes == -1)
+			if(bytes <= 0)
 			{
-				printf("Send in sendMessage failed!\n");
-				#ifdef WIN32
+#ifdef WIN32
 				int error = WSAGetLastError();
-				#else
-				int error = errno;
-				#endif
 
 				if(error == WSAEWOULDBLOCK)
 				{
 					continue;
 				}
+#else
+				int error = errno;
 
-				return error;
+				if(error == EAGAIN)
+				{
+					continue;
+				}
+#endif
+
+				return -1;
 			}
 			else
 			{
@@ -62,21 +66,25 @@ int sendMessage(SOCKET s, Message *m)
 			{
 				bytes = send(s, (char*)m->data + bytesSent, size, 0);
 
-				if(bytes == -1)
+				if(bytes <= 0)
 				{
-					printf("Send in sendMessage failed (body)!\n");
-					#ifdef WIN32
+#ifdef WIN32
 					int error = WSAGetLastError();
-					#else
-					int error = errno;
-					#endif
 
 					if(error == WSAEWOULDBLOCK)
 					{
 						continue;
 					}
+#else
+					int error = errno;
 
-					return error;
+					if(error == EAGAIN)
+					{
+						continue;
+					}
+#endif
+
+					return -1;
 				}
 				else
 				{
@@ -108,21 +116,25 @@ int receiveMessage(SOCKET s, Message &m)
 		{
 			bytes = recv(s, (char*)&m.header + bytesReceived, size, 0);
 
-			if(bytes == -1)
+			if(bytes <= 0)
 			{
-				printf("Recv in recvMessage failed!\n");
-				#ifdef WIN32
+#ifdef WIN32
 				int error = WSAGetLastError();
-				#else
-				int error = errno;
-				#endif
 
 				if(error == WSAEWOULDBLOCK)
 				{
 					continue;
 				}
+#else
+				int error = errno;
 
-				return error;
+				if(error == EAGAIN)
+				{
+					continue;
+				}
+#endif
+
+				return -1;
 			}
 			else
 			{
@@ -150,22 +162,26 @@ int receiveMessage(SOCKET s, Message &m)
 			do
 			{
 				bytes = recv(s, (char*)m.data + bytesReceived, size, 0);
-
-				if(bytes == -1)
+				
+				if(bytes <= 0)
 				{
-					printf("Recv in recvMessage failed(body)\n");
-					#ifdef WIN32
+#ifdef WIN32
 					int error = WSAGetLastError();
-					#else
-					int error = errno;
-					#endif
 
 					if(error == WSAEWOULDBLOCK)
 					{
 						continue;
 					}
+#else
+					int error = errno;
 
-					return error;
+					if(error == EAGAIN)
+					{
+						continue;
+					}
+#endif
+
+					return -1;
 				}
 				else
 				{
