@@ -18,6 +18,7 @@
 #include <vmr9.h>
 #include "vp8encoderidl.h"
 #include "vp8decoderidl.h"
+#include <BaseTyps.h>
 
 /*** Define GUIDs ***/
 
@@ -48,12 +49,20 @@ DEFINE_GUID(MEDIASUBTYPE_VP8_MUX,
 
 interface IVideoSpringSend : public IUnknown
 {
+	STDMETHOD(SetServerSocket)(SOCKET s) = 0;
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObject) { return -1; }
+	virtual ULONG STDMETHODCALLTYPE AddRef() { return -1; }
+	virtual ULONG STDMETHODCALLTYPE Release() { return -1; }
 };
 
 interface IVideoSpringRecv : public IUnknown
 {
+	STDMETHOD(SetServerSocket)(SOCKET s) = 0;
+	STDMETHOD(SetPresenterId)(long id) = 0;
+	virtual HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObject) { return -1; }
+	virtual ULONG STDMETHODCALLTYPE AddRef() { return -1; }
+	virtual ULONG STDMETHODCALLTYPE Release() { return -1; }
 };
-
 
 
 #else
@@ -92,7 +101,9 @@ enum
 	C_SET_READY,
 	C_SET_FORMAT,
 	C_BROADCAST,
-	C_RECEIVE
+	C_RECEIVE,
+	C_NEW_PRESENTER,
+	C_NEW_CLIENT
 };
 
 struct MessageHeader
