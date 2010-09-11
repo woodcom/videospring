@@ -7,7 +7,7 @@ int sendMessage(SOCKET s, Message *m)
 
 	do
 	{
-		int size = 1024;
+		int size = TCP_CHUNKSIZE;
 
 		if(sizeof(MessageHeader) - bytesSent < size)
 		{
@@ -18,7 +18,12 @@ int sendMessage(SOCKET s, Message *m)
 		{
 			bytes = send(s, (char*)&m->header + bytesSent, size, 0);
 
-			if(bytes <= 0)
+			if(bytes == 0)
+			{
+					printf("Disconnected(send)\n");
+					return -1;
+			}
+			else if(bytes < 0)
 			{
 #ifdef WIN32
 				int error = WSAGetLastError();
@@ -35,7 +40,7 @@ int sendMessage(SOCKET s, Message *m)
 					continue;
 				}
 #endif
-
+				printf("Error(send) %d\n", error);
 				return -1;
 			}
 			else
@@ -55,7 +60,7 @@ int sendMessage(SOCKET s, Message *m)
 
 		do
 		{
-			int size = 1024;
+			int size = TCP_CHUNKSIZE;
 
 			if(m->header.length - bytesSent < size)
 			{
@@ -66,7 +71,12 @@ int sendMessage(SOCKET s, Message *m)
 			{
 				bytes = send(s, (char*)m->data + bytesSent, size, 0);
 
-				if(bytes <= 0)
+				if(bytes == 0)
+				{
+						printf("Disconnected(send)\n");
+						return -1;
+				}
+				else if(bytes < 0)
 				{
 #ifdef WIN32
 					int error = WSAGetLastError();
@@ -83,7 +93,7 @@ int sendMessage(SOCKET s, Message *m)
 						continue;
 					}
 #endif
-
+					printf("Error(send) %d\n", error);
 					return -1;
 				}
 				else
@@ -108,15 +118,20 @@ int receiveMessage(SOCKET s, Message &m)
 
 	do
 	{
-		int size = 1024;
+		int size = TCP_CHUNKSIZE;
 
-		if(sizeof(MessageHeader) - bytesReceived < 1024) size = sizeof(MessageHeader) - bytesReceived;
+		if(sizeof(MessageHeader) - bytesReceived < TCP_CHUNKSIZE) size = sizeof(MessageHeader) - bytesReceived;
 
 		do
 		{
 			bytes = recv(s, (char*)&m.header + bytesReceived, size, 0);
 
-			if(bytes <= 0)
+			if(bytes == 0)
+			{
+					printf("Disconnected(recv)\n");
+					return -1;
+			}
+			else if(bytes < 0)
 			{
 #ifdef WIN32
 				int error = WSAGetLastError();
@@ -133,7 +148,7 @@ int receiveMessage(SOCKET s, Message &m)
 					continue;
 				}
 #endif
-
+				printf("Error(recv) %d\n", error);
 				return -1;
 			}
 			else
@@ -155,15 +170,20 @@ int receiveMessage(SOCKET s, Message &m)
 
 		do
 		{
-			int size = 1024;
+			int size = TCP_CHUNKSIZE;
 
-			if(m.header.length - bytesReceived < 1024) size = m.header.length - bytesReceived;
+			if(m.header.length - bytesReceived < TCP_CHUNKSIZE) size = m.header.length - bytesReceived;
 
 			do
 			{
 				bytes = recv(s, (char*)m.data + bytesReceived, size, 0);
 				
-				if(bytes <= 0)
+				if(bytes == 0)
+				{
+						printf("Disconnected(recv)\n");
+						return -1;
+				}
+				else if(bytes < 0)
 				{
 #ifdef WIN32
 					int error = WSAGetLastError();
@@ -180,7 +200,7 @@ int receiveMessage(SOCKET s, Message &m)
 						continue;
 					}
 #endif
-
+					printf("Error(recv) %d\n", error);
 					return -1;
 				}
 				else
