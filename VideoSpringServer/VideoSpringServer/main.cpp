@@ -1,4 +1,5 @@
 #include "../../common/VideoSpringCommon.h"
+#include <queue>
 
 
 class Client;
@@ -9,47 +10,134 @@ long total_clients = 0;
 fd_set read_set, write_set, except_set;
 Client *client_head = NULL;
 
-#define BUFF_SIZE 4 
-
-struct FrameBuff
-{
-	long number;
-	BYTE *frame;
-	long frameLength;
-};
-
 class Client
 {
 	public:
 		long id;
+		
 		BYTE *format;
 		long formatLength;
+		
 		BYTE *firstFrame;
 		long firstFrameLength;
-		FrameBuff frames[BUFF_SIZE];
-
+		
+		std::queue<SOCKET> destinations;
+		
+		int ready;
+		
 	private:
+	
 		SOCKET socket;  //accepted socket
+		
 		char client_info[1024];
+		
 		DWORD pid;
+		
 		Client *next; //this will be a singly linked list
 
-		long receivedBytes;
-
-		long lastFrame;
-		long renderedFrame;
+		std::queue<Message> buffer;
+		
+		long bytesSent;
+//		long lastFrame;
+//		long renderedFrame;
 		int header;
 		Message msg;
 		int type;
-
+		long receivedBytes;
+		
 	public:
+		int Send(SOCKET socket, Message &m)
+		{
+			Message msg;
+			msg.header.command = m.header.command;
+			msg.header.length = m.header.length;
+			
+			if(m.header.length > 0)
+			{
+				msg.data = (BYTE*)malloc(msg.header.length);
+				memcpy(msg.data, m.data, msg.header.length);
+			}
+			
+			buffer.push(msg);
+			destinations.push(socket);
+		}
+		
+		int Send()
+		{
+			
+			
+			if(buffer.empty())
+			{
+				return 0;
+			}
+			
+			if(bytesSent < sizeof(buffer.front().header))
+			{
+				int size = TCP_CHUNKSIZE;
+				
+				if(sizeof(buffer.front().header) - bytesSent < TCP_CHUNKSIZE) size = sizeof(buffer.front().header) - bytesSent;
+				
+				int bytes = send(destinations.front(), &buffer.front().header + bytesSent, size, 0);
+				
+				if (bytes >= 0)
+				{
+					bytesSent += bytes;
+					
+					if(bytesSent == sizeof(buffer.front().header) )
+					{
+						if(buffer.front().header.length == 0)
+						{
+							delete(buffer.front().data);
+							buffer.pop();
+							destinations.pop();
+							bytesSent = 0;
+						}						
+					}
+				}
+				else
+				{
+					printf("Error sending header!\n");
+					return errno;
+				}
+			}
+			else
+			{
+				long partSent = bytesSent - sizeof(buffer.front().header);
+				
+				int size = TCP_CHUNKSIZE;
+				
+				if(buffer.front().header.length - partSent < TCP_CHUNKSIZE) size = buffer.front().header.length - partSent;
+				
+				int bytes = send(destinations.front(), buffer.front().data + partSent, size, 0);
+				
+				if (bytes >= 0)
+				{
+					bytesSent += bytes;
+
+					if(bytesSent - sizeof(buffer.front().header) == buffer.front().header.length )
+					{
+						buffer.pop();
+						destinations.pop();
+						bytesSent = 0;
+					}
+				}
+				else
+				{
+					printf("Error sending data of length %ld!\n", buffer.front().header.length);
+					return errno;
+				}
+			}
+			
+			return 0;
+		}
+		
 		int Receive()
 		{
 			if(header)
 			{
 				int bytes = recv(socket, &msg.header + receivedBytes, sizeof(msg.header) - receivedBytes, 0);
 
-				if(bytes >= 0)
+				if(bytes > 0)
 				{
 					receivedBytes += bytes;
 
@@ -59,7 +147,10 @@ class Client
 
 						if(msg.header.length == 0)
 						{
-							doCommand(msg);
+							if(doCommand(msg) != NOERROR) 
+							{
+								return errno;
+							}
 						}
 						else
 						{
@@ -70,6 +161,7 @@ class Client
 				}
 				else
 				{
+					printf("Error receiving header!\n");
 					return errno;
 				}
 			}
@@ -77,7 +169,7 @@ class Client
 			{
 				int bytes = recv(socket, msg.data + receivedBytes, msg.header.length - receivedBytes, 0);
 
-				if(bytes >= 0)
+				if(bytes > 0)
 				{
 					receivedBytes += bytes;
 
@@ -85,39 +177,74 @@ class Client
 					{
 						header = 1;
 						receivedBytes = 0;
-						doCommand(msg);
+
+						if(doCommand(msg) != NOERROR)
+						{
+							free(msg.data);
+							return errno;
+						}
+
 						free(msg.data);
 					}
 				}
 				else
 				{
+					printf("Error receiving data.  Length = %ld!\n", msg.header.length);
 					return errno;
 				}
 			}
+
 			return 0;
 		}
 
-		void doCommand(Message m)
+		int doCommand(Message m)
 		{
 			switch(m.header.command)
 			{
+				case C_NEW_CLIENT:
+				{
+					printf("Type: Client\n");
+					type = 2;
+					memcpy(&pid, m.data, sizeof(DWORD));
+					Client *c = client_head;
+					while(c != NULL)
+					{
+						if(c->GetType() == 0 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid) && c->formatLength > 0)
+						{
+							printf("Sending list of presenters to client...\n");
+							Message msg;
+							msg.header.command = C_NEW_PRESENTER;
+							msg.header.length = sizeof(long);
+							msg.data = (BYTE*)&c->id;
+							Send(socket, msg);
+						}
+						c = c->GetNext();
+					}
+					break;
+				}
+
 				case C_SET_PRESENTER_SEND:
-					printf("\nType: Presenter\n");
+				{
+					printf("Type: Presenter\n");
 					memcpy(&pid, m.data, sizeof(DWORD));
 					firstFrameLength = 0;
 					free(firstFrame);
 					type = 0;
+
 					break;
+				}
 
 				case C_SET_CLIENT_RECV:
 				{
 					if(type != 1)
-						printf("\nType: Client\n");
+						printf("Type: Renderer\n");
 
 					memcpy(&pid, m.data, sizeof(DWORD));
 					type = 1;
 
 					Message msg;
+
+					msg.header.command = 0;
 					msg.header.length = 0;
 					msg.data = NULL;
 
@@ -125,7 +252,7 @@ class Client
 
 					while(c != NULL)
 					{
-						if(c->GetType() == 0 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid) != 0 && c->formatLength > 0)
+						if(c->GetType() == 0 && c->id == pid)
 						{
 							msg.header.length = c->formatLength;
 							msg.data = c->format;
@@ -134,44 +261,62 @@ class Client
 						c = c->GetNext();
 					}
 
-					sendMessage(socket, &msg);
+					return Send(socket, msg);
 				
 					break;
 				}
 
 				case C_BROADCAST:
+				{
 					if(firstFrameLength == 0)
 					{
 						firstFrameLength = m.header.length;
 						firstFrame = (BYTE*)malloc(firstFrameLength);
 						memcpy(firstFrame, m.data, firstFrameLength);
-						lastFrame = 0;
 					}
-					else
-					{
-						lastFrame++;
-					}
-					frames[lastFrame % BUFF_SIZE].frameLength = m.header.length;
-					free(frames[lastFrame % BUFF_SIZE].frame);
-					frames[lastFrame % BUFF_SIZE].frame = (BYTE*)malloc(m.header.length);
-					memcpy(frames[lastFrame % BUFF_SIZE].frame, m.data, m.header.length);
-					frames[lastFrame % BUFF_SIZE].number = lastFrame;
-					break;
-
-				case C_RECEIVE:
-				{
+					
 					Client *c = client_head;
 					while(c != NULL)
 					{
-						if(c->GetType() == 0 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid))
+						if(c->GetType() == 1 && c->pid == id && c->ready == 1)
+						{
+							Message msg;
+
+							msg.header.command = 0;
+							msg.header.length = m.header.length;
+							msg.data = m.data;
+							
+							if(c->firstFrameLength == 0)
+							{
+								c->firstFrameLength = 1;
+								msg.header.length = firstFrameLength;
+								msg.data = firstFrame;
+							}
+							
+							c->Send(c->GetSocket(), msg);
+						}
+						c = c->GetNext();
+					}
+					break;
+				}
+
+				case C_RECEIVE:
+				{
+					printf("Ready to receive frames.\n");
+					ready = 1;
+/*					Client *c = client_head;
+					if(formatLength > 0)
+					while(c != NULL)
+					{
+						if(c->GetType() == 1 && c->pid == id)
 						{
 							Message m;
 							if(firstFrameLength == 0)
 							{
-								firstFrameLength = c->firstFrameLength;
-								m.header.length = c->firstFrameLength;
-								m.data = c->firstFrame;
-								renderedFrame = 0;
+								firstFrameLength = firstFrameLength;
+								m.header.length = firstFrameLength;
+								m.data = firstFrame;
+								c->renderedFrame = 0;
 							}
 							else
 							{
@@ -180,66 +325,82 @@ class Client
 								long newFrame = 0;
 								for(int n = 0; n < BUFF_SIZE; n++)
 								{
-									if(c->frames[n].number == renderedFrame + 1)
+									if(frames[n].number == c->renderedFrame + 1)
 									{
-										m.data = c->frames[n].frame;
-										m.header.length = c->frames[n].frameLength;
-										newFrame = renderedFrame + 1;
+										m.data = frames[n].frame;
+										m.header.length = frames[n].frameLength;
+										newFrame = c->renderedFrame + 1;
 										break;
 									}
 
-									if(c->frames[n].number == c->lastFrame)
+									if(frames[n].number == lastFrame)
 									{
-										m.data = c->frames[n].frame;
-										m.header.length = c->frames[n].frameLength;
-										newFrame = c->lastFrame;
+										m.data = frames[n].frame;
+										m.header.length = frames[n].frameLength;
+										newFrame = lastFrame;
 									}
 								}
 
-								if(newFrame == 0 || newFrame == renderedFrame)
+								if(newFrame == 0 || newFrame == c->renderedFrame)
 								{
 									Message m;
 									m.header.command = 0;
 									m.header.length = 0;
 									m.data = NULL;
-									sendMessage(socket, &m);
-									return;
+									return Send(c->GetSocket(), m);
 								}
 
-								if(newFrame == c->lastFrame && newFrame != renderedFrame + 1)
+								if(newFrame == lastFrame && newFrame != c->renderedFrame + 1)
 								{
-									printf("%d frames dropped\n", newFrame - renderedFrame);
+									printf("%ld frames dropped\n", newFrame - c->renderedFrame);
 								}
 
-								renderedFrame = newFrame;
+								c->renderedFrame = newFrame;
 							}
 
-							sendMessage(socket, &m);
-							return;
+							return Send(c->GetSocket(), m);
 						}
 						c = c->GetNext();
 					}
-	
+	/*
 					Message m;
 					m.header.command = 0;
 					m.header.length = 0;
 					m.data = NULL;
-					sendMessage(socket, &m);
+					return Send(socket, m);*/
 					break;
 				}
-
+ 
 				case C_SET_FORMAT:
-					printf("\nFormat Received\n");
+				{
 					free(format);
 					format = (BYTE*)malloc(m.header.length);
 					memcpy(format, m.data, m.header.length);
 					formatLength = m.header.length;
+					
+					Client *c = client_head;
+					while(c != NULL) // Notify clients of new presenter
+					{
+						if(c->GetType() == 2 && (strcmp(client_info, c->client_info) != 0 || pid != c->pid))
+						{
+							printf("Notifying clients of new presenter...\n");
+                                                        Message msg;
+                                                        msg.header.command = C_NEW_PRESENTER;
+                                                        msg.header.length = sizeof(uint32_t);
+                                                        msg.data = (BYTE*)&id;
+
+							Send(c->GetSocket(), msg);
+						}
+						c = c->GetNext();
+					}
 					break;
+				}
 
 				default:
-					printf("\nUnknown command: %d\n", m.header.command);
+					printf("Unknown command: %d\n", m.header.command);
 					break;
 			}
+			return NOERROR;
 		}
 
 		int GetType()
@@ -254,7 +415,6 @@ class Client
 
 		Client *add(Client *c)
 		{
-			printf("\nAdding Client #%ld\n", c->id);
 			Client *cur = this;
 
 			while(cur->next != NULL)
@@ -269,7 +429,7 @@ class Client
 
 		Client *del(Client *c)
 		{
-			printf("\nDeleting Client #%ld\n", c->id);
+			printf("Deleting Client #%ld\n", c->id);
 			Client * cur = client_head;
 
 			while(cur->next != NULL && cur->next != c)
@@ -279,7 +439,7 @@ class Client
 
 			if(cur->next == NULL && cur->next != c)
 			{
-				printf("\nCouldn't find client to delete\n");
+				printf("Couldn't find client to delete\n");
 				return cur->next;
 			}
 
@@ -320,23 +480,14 @@ class Client
 			type = -1;
 			id = ++client_id;
 			total_clients++;
-			receivedBytes = 0;
 			format = NULL;
 			formatLength = 0;
 			firstFrameLength = 0;
 			firstFrame = NULL;
-			lastFrame = 0;
-			renderedFrame = 0;
+			ready = 0;
+			bytesSent = 0;
 			header = 1;
-
-			for(int n = 0 ; n < BUFF_SIZE; n++)
-			{
-				frames[n].number = -1;
-				frames[n].frame = NULL;
-				frames[n].frameLength = 0;
-			}
-
-			printf("\nCreated Client #%ld\n", id);
+			receivedBytes = 0;
 		}
 
 		//destructor
@@ -352,7 +503,7 @@ int InitSets(SOCKET ListenSocket)
 	//Initialize
 
 	FD_ZERO(&read_set);
-//	FD_ZERO(&write_set);
+	FD_ZERO(&write_set);
 	FD_ZERO(&except_set);
 
 	//Assign the ListenSocket to Sets
@@ -367,7 +518,10 @@ int InitSets(SOCKET ListenSocket)
 
 	while(c != NULL)
 	{
-		//FD_SET(c->GetSocket(), &write_set);
+		if(!c->destinations.empty())
+		{
+			FD_SET(c->GetSocket(), &write_set);
+		}
 		FD_SET(c->GetSocket(), &read_set);
 
 		if(c->GetSocket() > max) max = c->GetSocket();
@@ -384,6 +538,7 @@ void AcceptConnections(SOCKET ListenSocket)
 {
 	printf("Accepting Connections...\n");
 
+	int hadLast = 0;
 	while(1)
 	{
 		int max = InitSets(ListenSocket);
@@ -413,7 +568,7 @@ void AcceptConnections(SOCKET ListenSocket)
 					printf("Error accepting socket!");
 				}
 
-				printf("\nClient connected from: %s\n", inet_ntoa(clientaddr.sin_addr)); 
+				printf("Client connected from: %s\n", inet_ntoa(clientaddr.sin_addr)); 
 
 #ifdef WIN32
 				u_long no_block = 1;
@@ -440,25 +595,34 @@ void AcceptConnections(SOCKET ListenSocket)
 
 			if (FD_ISSET(ListenSocket, &except_set)) 
 			{
-				printf("\nError accepting socket.");
+				printf("Error accepting socket.");
 				continue;
 			}
 
 			//Iterate the client context list to see if 
 			//any of the socket there has changed its state
 
+			int last = 0;
+			
 			Client *c = client_head;
 			while (c != NULL)
 			{
+				if(c->GetType() == 0 && hadLast > 0)
+				{
+					c = c->GetNext();
+					continue;
+				}
 				//Check in Read Set
 				if (FD_ISSET(c->GetSocket(), &read_set))
 				{
+					if(c->GetType() == 1) last++;
 
 					int ret = c->Receive();
 
-					if((ret < 0 && ret != EAGAIN) || FD_ISSET(c->GetSocket(), &except_set))
+					if(ret != 0 && ret != EAGAIN && ret != EWOULDBLOCK) // Disconnect client on errors
 					{
-						printf("Client #%d Disconnected", c->id);
+						printf("Read Error %d\n", ret);
+						printf("Client #%ld Disconnected", c->id);
 
 						if(c == client_head)
 						{
@@ -474,12 +638,59 @@ void AcceptConnections(SOCKET ListenSocket)
 					}
 				}
 
+				//Check in Write Set
+				if (FD_ISSET(c->GetSocket(), &write_set))
+				{
+					if(c->GetType() == 1) last++;
+					
+					int ret = c->Send();
+
+					if(ret != 0 && ret != EAGAIN && ret != EWOULDBLOCK) // Disconnect client on errors
+					{
+						printf("Write Error %d\n", ret);
+						printf("Client #%ld Disconnected", c->id);
+
+						if(c == client_head)
+						{
+							Client *tmp = client_head;
+							c = client_head = client_head->GetNext();
+							delete(tmp);
+						}
+						else
+						{
+							c = client_head->del(c);
+						}
+						continue;
+					}
+				}
+
+				//Check in except Set
+				if (FD_ISSET(c->GetSocket(), &except_set))
+				{
+
+					printf("Client #%ld Disconnected %d", c->id, errno);
+
+					if(c == client_head)
+					{
+						Client *tmp = client_head;
+						c = client_head = client_head->GetNext();
+						delete(tmp);
+					}
+					else
+					{
+						c = client_head->del(c);
+					}
+					continue;
+				}
+
 				c = c->GetNext();
 			}
+			
+			hadLast = last;
 		}
 		else //select
 		{
-			// printf("\nError executing select()");
+			// printf("Error executing select()");
 			//return;
 		}
 	}
