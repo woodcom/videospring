@@ -2,7 +2,7 @@
 
 #define H_VIDSPRINGCOMMON 1
 
-#define TCP_CHUNKSIZE 10000
+#define TCP_CHUNKSIZE 1024
 
 #if defined(WIN32) || defined(_WINDLL)
 
