@@ -226,11 +226,11 @@ STDMETHODIMP CVideoSpringSendFilter::Run(REFERENCE_TIME tStart)
 CVideoSpringSendInputPin::CVideoSpringSendInputPin(CVideoSpringSendFilter *pFilter,
                                HRESULT *phr,
                                LPCWSTR pPinName) :
-    CBaseInputPin(NAME("VideoSpringSend Input Pin"), pFilter, pFilter, phr, pPinName)
+    CBaseInputPin(NAME("VideoSpringSend Input Pin"), pFilter, pFilter, phr, pPinName),
+	IVideoSpringSend()
 {
+	frame = 0;
     m_pFilter = pFilter;
-
-	WSAStartup(MAKEWORD(2, 2), &data);
 } // (Constructor)
 
 
@@ -239,9 +239,28 @@ CVideoSpringSendInputPin::CVideoSpringSendInputPin(CVideoSpringSendFilter *pFilt
 //
 CVideoSpringSendInputPin::~CVideoSpringSendInputPin()
 {
-	WSACleanup();
 } // (Destructor)
 
+
+STDMETHODIMP CVideoSpringSendInputPin::NonDelegatingQueryInterface(REFIID riid, void **ppv)
+{
+	if(riid == IID_IVideoSpringSend)
+	{
+		return GetInterface(static_cast<IVideoSpringSend*>(this), ppv);
+	}
+	else
+	{
+		return CBaseInputPin::NonDelegatingQueryInterface(riid, ppv);
+	}
+}
+
+
+STDMETHODIMP CVideoSpringSendInputPin::SetServerSocket(SOCKET s)
+{
+	server = s;
+
+	return S_OK;
+}
 
 //
 // BreakConnect
@@ -314,46 +333,20 @@ HRESULT CVideoSpringSendInputPin::SetMediaType(const CMediaType *pmt)
 //
 HRESULT CVideoSpringSendInputPin::Active(void)
 {
-	closesocket(server);
-	server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-	FILE *f = fopen("c:\\VideoSpring.ini", "r");
-
-	char ip[1024];
-	int bytes = fread(ip, 1, 1024, f);
-	ip[bytes] = 0;
-	fclose(f);
-
-	serveraddr.sin_family = AF_INET;
- 	serveraddr.sin_addr.s_addr = inet_addr(ip);
-	serveraddr.sin_port = htons(1234);
-
-	if(server == INVALID_SOCKET)
-	{
-		MessageBox(NULL, "Invalid Socket!", "", MB_OK);
-		return ERROR;
-	}
-
-	if(connect(server, (SOCKADDR*)&serveraddr, sizeof(sockaddr)) == SOCKET_ERROR)
-	{
-		MessageBox(NULL, "Socket  Error!", "", MB_OK);
-		return ERROR;
-	}
-
 	Message m;
 	m.header.command = C_SET_PRESENTER_SEND;
-	m.header.length = sizeof(DWORD);
+	m.header.length = sizeof(uint32_t);
 
 	DWORD pid = GetCurrentProcessId();
 	m.data = (BYTE*)&pid;
 
-	if(sendMessage(server, &m) != 0)
+	if(sendMessage(server, &m) == -1)
 	{
-		MessageBox(NULL, "Error introducing self!", "", MB_OK);
-		return ERROR;
+		printf("VideoSpringSend.dll::CVideoSpringSendInputPin::Active Failed to send message\n");
+		return -1;
 	}
 
-	return NOERROR;
+	return S_OK;
 } // Active
 
 
@@ -364,7 +357,6 @@ HRESULT CVideoSpringSendInputPin::Active(void)
 //
 HRESULT CVideoSpringSendInputPin::Inactive(void)
 {
-	closesocket(server);
     return NOERROR;
 
 } // Inactive
@@ -377,8 +369,6 @@ HRESULT CVideoSpringSendInputPin::Inactive(void)
 //
 HRESULT CVideoSpringSendInputPin::Receive(IMediaSample * pSample)
 {
-	static long frame = 0;
-
 	// Lock this with the filter-wide lock
     CAutoLock lock(m_pFilter);
 
@@ -386,18 +376,24 @@ HRESULT CVideoSpringSendInputPin::Receive(IMediaSample * pSample)
 	
 	if(frame == 0) // Send format info if first frame
 	{
+		printf("%ld sending format\n", formatLength);
 		m.header.command = C_SET_FORMAT;
 		m.header.length = formatLength;
 		m.data = format;
 
 		sendMessage(server, &m);
+		printf("Sent format\n");
 	}
 
 	m.header.command = C_BROADCAST;
 	m.header.length = pSample->GetActualDataLength();
 	pSample->GetPointer(&(m.data));
 
-	sendMessage(server, &m);
+	if(sendMessage(server, &m) == -1)
+	{
+		printf("Error sending frame.\n");
+		return -1;
+	}
 
 	frame++;
 

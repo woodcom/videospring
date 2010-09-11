@@ -13,18 +13,20 @@ class CVideoSpringSendFilter;
 
 // Class supporting the VideoSpringSend input pin
 
-class CVideoSpringSendInputPin : public CBaseInputPin
+class CVideoSpringSendInputPin : public CBaseInputPin, public IVideoSpringSend
 {
     friend class CVideoSpringSendFilter;
 
 public:
 	SOCKADDR_IN serveraddr;
+	DECLARE_IUNKNOWN;
 
 private:
 	WSADATA data;
 	SOCKET server;
 	long formatLength;
 	BYTE *format;
+	long frame;
     CVideoSpringSendFilter *m_pFilter;         // The filter that owns us
 
 public:
@@ -33,6 +35,9 @@ public:
                    HRESULT *phr,
                    LPCWSTR pPinName);
     ~CVideoSpringSendInputPin();
+
+	STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void **ppv);
+	STDMETHODIMP SetServerSocket(SOCKET s);
 
     // Lets us know where a connection ends
     HRESULT BreakConnect();

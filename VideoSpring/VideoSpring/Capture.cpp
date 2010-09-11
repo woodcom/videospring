@@ -73,8 +73,29 @@ HRESULT getVideoCaptureDevice(IBaseFilter **ret)
 	return -1;
 }
 
-Capture::Capture()
+Capture::Capture(const char *ip)
 {
+	server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	if(server == INVALID_SOCKET)
+	{
+		printf("Error creating socket.\n");
+		return;
+	}
+	
+	sockaddr_in serveraddr;
+
+	serveraddr.sin_family = AF_INET;
+ 	serveraddr.sin_addr.s_addr = inet_addr(ip);
+	serveraddr.sin_port = htons(1234);
+
+	if(connect(server, (SOCKADDR*)&serveraddr, sizeof(sockaddr)) == SOCKET_ERROR)
+	{
+		printf("Error connecting to server.\n");
+		closesocket(server);
+		return;
+	}
+
 	if(FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void **)&graph)))
 	{
 		printf("Failed to create graph!\n");
@@ -132,6 +153,7 @@ int Capture::createGraph()
 {
 	IBaseFilter *send, *cap, *encoder;
 	IVP8Encoder *encoderControl;
+	IVideoSpringSend *sendControl;
 	IPin *sendIn, *capOut, *encIn, *encOut, *colorIn, *colorOut, *pinOut;
 	IEnumPins *pins;
 	HRESULT hr;
@@ -139,20 +161,20 @@ int Capture::createGraph()
 
 	IAMStreamConfig *config;
 
-	int deadline = 0;
-	int bitrate = 0;
-	int threadcount = 0;
+	int deadline = 1;
+	int bitrate = 500;
+	int threadcount = 1;
 
 	system("cls");
 
 	printf("ENCODER SETTINGS\n\n");
 
-	printf("Enter deadline: ");
-	scanf("%d", &deadline);
+//	printf("Enter deadline: ");
+//	scanf("%d", &deadline);
 	printf("Enter Bit Rate: ");
 	scanf("%d", &bitrate);
-	printf("Enter Thread Count: ");
-	scanf("%d", &threadcount);
+//	printf("Enter Thread Count: ");
+//	scanf("%d", &threadcount);
 
 	if(getVideoCaptureDevice(&cap))
 	{
@@ -269,6 +291,10 @@ int Capture::createGraph()
 
 	printf("CHOOSE OUTPUT FORMAT\n\n");
 
+	printf("Framerate: ");
+	int frameRate;
+	scanf("%d", &frameRate);
+
 	for(int i = 0; i < numCaps; i++)
 	{
 		if(FAILED(config->GetStreamCaps(i, &format, (BYTE*)&caps)))
@@ -281,11 +307,13 @@ int Capture::createGraph()
 
 		char buff[1024];
 
-		printf("%dx%d @ %d-bit y/n: ", video->bmiHeader.biWidth, video->bmiHeader.biHeight, video->bmiHeader.biBitCount);
+		printf("%dx%d @ %d-bit y/n: ", video->bmiHeader.biWidth, video->bmiHeader.biHeight, video->bmiHeader.biBitCount, video->AvgTimePerFrame);
 
 		scanf("%s", buff);
 		if(buff[0] == 'y')
 		{
+			video->AvgTimePerFrame = (LONGLONG)(10000000 / frameRate);
+
 			if(FAILED(config->SetFormat(format)))
 			{
 				printf("Failed to set format!\n");
@@ -295,17 +323,24 @@ int Capture::createGraph()
 		}
 	}
 
-	encoderControl->SetDropframeThreshold(50);
+	encoderControl->ResetSettings();
+	encoderControl->SetDropframeThreshold(25);
 	encoderControl->SetTokenPartitions(3);
-	encoderControl->SetUndershootPct(50);
+	encoderControl->SetUndershootPct(95);
 	encoderControl->SetDeadline(deadline);
 	encoderControl->SetTargetBitrate(bitrate);
 	encoderControl->SetThreadCount(threadcount);
-	encoderControl->SetEndUsage(kEndUsageVBR);
+	encoderControl->SetEndUsage(kEndUsageCBR);
 	encoderControl->SetErrorResilient(1);
-	encoderControl->SetKeyframeMode(kKeyframeModeAuto);
-//	encoderControl->SetKeyframeMinInterval(1);
-//	encoderControl->SetKeyframeMaxInterval(1);
+//	encoderControl->SetKeyframeMode(kKeyframeModeAuto);
+//	encoderControl->SetKeyframeMinInterval(0);
+//	encoderControl->SetKeyframeMaxInterval(999999);
+//	encoderControl->SetMaxQuantizer(4);
+//	encoderControl->SetMinQuantizer(56);
+	encoderControl->SetDecoderBufferSize(6);
+	encoderControl->SetDecoderBufferInitialSize(4);
+	encoderControl->SetDecoderBufferOptimalSize(5);
+	encoderControl->SetResizeAllowed(1);
 //	encoderControl->SetForceKeyframe();
 	encoderControl->ApplySettings();
 
@@ -377,6 +412,15 @@ int Capture::createGraph()
 	{
 		printf("Failed to connect encoder to sender!\n");
 	}
+
+	if(FAILED(sendIn->QueryInterface(IID_IVideoSpringSend, (void**)&sendControl)))
+	{
+		printf("Failed to get send control diff!\n");
+		return 1;
+	}
+
+	sendControl->SetServerSocket(server);
+
 
 	return 0;
 }

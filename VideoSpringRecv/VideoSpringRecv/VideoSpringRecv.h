@@ -6,7 +6,7 @@
  *
  **********************************************/
 
-class CVideoSpringRecvPin : public CSourceStream
+class CVideoSpringRecvPin : public CSourceStream, public IVideoSpringRecv
 {
 protected:
 /*
@@ -16,17 +16,22 @@ protected:
     const REFERENCE_TIME m_rtFrameLength;
 	*/
     CCritSec m_cSharedState;            // Protects our internal state
+
 private:
-	WSADATA data;
+
 	SOCKET server;
-	SOCKADDR_IN serveraddr;
-	BYTE *format;
-	long formatLength;
+	long presenterId;
+	long frame;
 
 public:
 
     CVideoSpringRecvPin(HRESULT *phr, CSource *pFilter);
     ~CVideoSpringRecvPin();
+
+	DECLARE_IUNKNOWN;
+	STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void **ppv);
+	STDMETHODIMP SetServerSocket(SOCKET s);
+	STDMETHODIMP SetPresenterId(long id);
 
 	HRESULT Active(void);
 	HRESULT Inactive(void);
@@ -34,6 +39,7 @@ public:
     // Override the version that offers exactly one media type
     HRESULT GetMediaType(CMediaType *pMediaType);
     HRESULT DecideBufferSize(IMemAllocator *pAlloc, ALLOCATOR_PROPERTIES *pRequest);
+	HRESULT	DoBufferProcessingLoop(void);
     HRESULT FillBuffer(IMediaSample *pSample);
     
     // Quality control
