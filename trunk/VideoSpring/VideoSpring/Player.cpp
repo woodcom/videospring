@@ -1,7 +1,29 @@
 #include "Player.h"
 
-Player::Player()
+Player::Player(const char *ip, long id)
 {
+	presenterId = id;
+	server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+
+	if(server == INVALID_SOCKET)
+	{
+		printf("Error creating socket.\n");
+		return;
+	}
+	
+	sockaddr_in serveraddr;
+
+	serveraddr.sin_family = AF_INET;
+ 	serveraddr.sin_addr.s_addr = inet_addr(ip);
+	serveraddr.sin_port = htons(1234);
+
+	if(connect(server, (SOCKADDR*)&serveraddr, sizeof(sockaddr)) == SOCKET_ERROR)
+	{
+		printf("Error connecting to server.\n");
+		closesocket(server);
+		return;
+	}
+
 	if(FAILED(CoCreateInstance(CLSID_FilterGraph, NULL, CLSCTX_INPROC_SERVER, IID_IGraphBuilder, (void **)&graph)))
 	{
 		printf("Failed to create graph!\n");
@@ -26,8 +48,10 @@ Player::Player()
 		return;
 	}
 
-	createGraph();
-	runGraph();
+	if(!createGraph())
+	{
+		runGraph();
+	}
 }
 
 Player::~Player()
@@ -41,7 +65,7 @@ Player::~Player()
 int Player::runGraph()
 {
 	control->Run();
-
+	//event->WaitForCompletion(INFINITE, 0);
 	return 0;
 }
 
@@ -51,8 +75,10 @@ int Player::createGraph()
 	IVMRMixerControl9 *vmr9control;
 	IVMRFilterConfig9 *vmr9config;
 	IVP8PostProcessing *decoderControl;
+	IVideoSpringRecv *recvControl;
+
 	IEnumPins *pins;
-	IPin *pinOut, *decIn, *decOut;
+	IPin *pinOut, *decIn, *decOut, *renderPins[16];
 
 
 	/*** Load Filters ***/
@@ -83,6 +109,16 @@ int Player::createGraph()
 		printf("Failed to get encoder control!\n");
 		return 1;
 	}
+	
+	if(FAILED(vmr9->QueryInterface(IID_IVMRFilterConfig9, (void**)&vmr9config)))
+	{
+		printf("Failed to get VMR9 config!\n");
+		return 1;
+	}
+
+	// This configuration is required before loading the mixer control
+	vmr9config->SetNumberOfStreams(1); // In future may use up to 16
+	vmr9config->SetRenderingMode(VMRMode_Windowed);
 
 	if(FAILED(vmr9->QueryInterface(IID_IVMRMixerControl9, (void**)&vmr9control)))
 	{
@@ -90,25 +126,10 @@ int Player::createGraph()
 		return 1;
 	}
 
-	if(FAILED(vmr9->QueryInterface(IID_IVMRFilterConfig9, (void**)&vmr9config)))
-	{
-		printf("Failed to get VMR9 config!\n");
-		return 1;
-	}
 
 	/*** Configure Filters ***/
 
 	decoderControl->SetFlags(0);
-	vmr9config->SetNumberOfStreams(16); // In future may use up to 16
-	vmr9config->SetRenderingMode(VMRMode_Windowed);
-
-	VMR9NormalizedRect r;
-	r.left = 0;
-	r.right = .5;
-	r.top = 0;
-	r.bottom = .5;
-
-	vmr9control->SetOutputRect(0, &r);
 
 
 	/*** Get Pins ***/
@@ -133,6 +154,23 @@ int Player::createGraph()
 
 	pins->Release();
 
+	if(FAILED(vmr9->EnumPins(&pins)))
+	{
+		printf("Failed to enumerate pins!\n");
+		return 1;
+	}
+
+	for(int n = 0; n < 1; n++)
+	{
+		if(FAILED(pins->Next(1, &renderPins[n], NULL)))
+		{
+			printf("Failed to get next render pin!\n");
+			continue;
+		}
+	}
+
+	pins->Release();
+
 	if(FAILED(recv->EnumPins(&pins)))
 	{
 		printf("Failed to enumerate pins!\n");
@@ -145,6 +183,14 @@ int Player::createGraph()
 		return 1;
 	}
 
+	if(FAILED(pinOut->QueryInterface(IID_IVideoSpringRecv, (void**)&recvControl)))
+	{
+		printf("Failed to get recv control!\n");
+		return 1;
+	}
+
+	recvControl->SetServerSocket(server);
+	recvControl->SetPresenterId(presenterId);
 
 	/*** Add Filters to Graph ***/
 
@@ -159,6 +205,13 @@ int Player::createGraph()
 		printf("Failed to add receive filter to graph!\n");
 		return 1;
 	}
+	/*
+	if(FAILED(graph->AddFilter(vmr9, NULL)))
+	{
+		printf("Failed to add VMR9 filter to graph!\n");
+		return 1;
+	}
+	*/
 
 	if(FAILED(graph->Connect(pinOut, decIn)))
 	{
@@ -166,17 +219,37 @@ int Player::createGraph()
 		return 1;
 	}
 
-	if(FAILED(graph->Render(decOut)))
+
+	graph->Render(decOut);
+	/*if(FAILED(graph->Connect(decOut, renderPins[0])))
 	{
-		printf("Failed to render output pin!\n");
+		printf("Failed to connect output pin to renderer!\n");
 		return 1;
-	}
+	}*/
+
+
+	VMR9NormalizedRect r;
+
+	r.left = 0;
+	r.right = .5;
+	r.top = 0;
+	r.bottom = .5;
+
+	vmr9control->SetOutputRect(0, &r);
+
+	for(int n = 0; n < 1; n++)
+		renderPins[n]->Release();
 
 	decOut->Release();
 	decIn->Release();
 	pinOut->Release();
 	pins->Release();
 	recv->Release();
+	decoder->Release();
+	vmr9->Release();
+	vmr9control->Release();
+	vmr9config->Release();
+	decoderControl->Release();
 
 	return 0;
 }

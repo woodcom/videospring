@@ -11,11 +11,14 @@ private:
 	IMediaEvent   *event;
 	IVideoWindow *video;
 
+	SOCKET server;
+	long presenterId;
+
 	int createGraph();
 	int runGraph();
 
 public:
-	Player();
+	Player(const char *ip, long id);
 	~Player();
 };
 #endif

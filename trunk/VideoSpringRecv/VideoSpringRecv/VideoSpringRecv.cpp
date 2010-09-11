@@ -7,6 +7,7 @@
 //------------------------------------------------------------------------------
 
 #include "VideoSpringRecv.h"
+#include <time.h>
 
 // Filter setup data
 const AMOVIESETUP_MEDIATYPE sudOpPinTypes =
@@ -77,70 +78,54 @@ const AMOVIESETUP_MEDIATYPE sudOpPinTypes =
  **********************************************/
 
 CVideoSpringRecvPin::CVideoSpringRecvPin(HRESULT *phr, CSource *pFilter)
-      : CSourceStream(NAME("Output"), phr, pFilter, L"Out")
+      : CSourceStream(NAME("Output"), phr, pFilter, L"Out"), IVideoSpringRecv()
 {
-	WSAStartup(MAKEWORD(2, 2), &data);
-
-	server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-
-	FILE *f = fopen("c:\\VideoSpring.ini", "r");
-
-	char ip[1024];
-	int bytes = fread(ip, 1, 1024, f);
-	ip[bytes] = 0;
-	fclose(f);
-
-	serveraddr.sin_family = AF_INET;
- 	serveraddr.sin_addr.s_addr = inet_addr(ip);
-	serveraddr.sin_port = htons(1234);
-
-	if(server == INVALID_SOCKET)
-	{
-		MessageBox(NULL, "Error creating socket.", "", MB_OK);
-		return;
-	}
-
-	if(connect(server, (SOCKADDR*)&serveraddr, sizeof(sockaddr)) == SOCKET_ERROR)
-	{
-		MessageBox(NULL, "Error connecting to server.", "", MB_OK);
-		return;
-	}
-
-	do
-	{
-		Message m;
-
-		m.header.command = C_SET_CLIENT_RECV;
-		m.header.length = sizeof(DWORD);
-
-		DWORD pid = GetCurrentProcessId();
-		m.data = (BYTE*)&pid;
-
-		sendMessage(server, &m);
-
-		receiveMessage(server, m);
-
-		format = new BYTE[m.header.length];
-		formatLength = m.header.length;
-
-		memcpy(format, m.data, formatLength);
-
-		deleteMessage(m);
-	}
-	while(formatLength == 0);
+	frame = 1;
 }
 
 
 CVideoSpringRecvPin::~CVideoSpringRecvPin()
 {
-	closesocket(server);
-	delete(format);
-	WSACleanup();
-	// Should cleanup sockets here
+}
+
+STDMETHODIMP CVideoSpringRecvPin::SetServerSocket(SOCKET s)
+{
+	server = s;
+
+	return S_OK;
+}
+
+STDMETHODIMP CVideoSpringRecvPin::SetPresenterId(long id)
+{
+	presenterId = id;
+
+	return S_OK;
+}
+
+STDMETHODIMP CVideoSpringRecvPin::NonDelegatingQueryInterface(REFIID riid, void **ppv)
+{
+	if(riid == IID_IVideoSpringRecv)
+	{
+		return GetInterface(static_cast<IVideoSpringRecv*>(this), ppv);
+	}
+	else
+	{
+		return CSourceStream::NonDelegatingQueryInterface(riid, ppv);
+	}
 }
 
 HRESULT CVideoSpringRecvPin::Active(void)
 {
+	Message m;
+
+	m.header.command = C_RECEIVE;
+	m.header.length = 0;
+
+	if(sendMessage(server, &m) == -1)
+	{
+		printf("Error sending message to server.\n");
+		return -1;
+	}
 
 	return CSourceStream::Active();
 
@@ -174,9 +159,40 @@ HRESULT CVideoSpringRecvPin::GetMediaType(CMediaType *pMediaType)
     CAutoLock cAutoLock(m_pFilter->pStateLock());
 
     CheckPointer(pMediaType, E_POINTER);
+
+	BYTE *format;
+	uint32_t formatLength;
+
+	Message m;
+
+	m.header.command = C_SET_CLIENT_RECV;
+	m.header.length = sizeof(uint32_t);
+
+	m.data = (BYTE*)&presenterId;
+
+	if(sendMessage(server, &m) == -1)
+	{
+		printf("Error sending message to server.\n");
+		return -1;
+	}
+
+	if(receiveMessage(server, m) == -1)
+	{
+		printf("Error receiving format from server.\n");
+		deleteMessage(m);
+		return -1;
+	}
+
+	format = new BYTE[m.header.length];
+	formatLength = m.header.length;
+
+	printf("Got format length %ld\n", formatLength);
+
+	memcpy(format, m.data, formatLength);
+
+	deleteMessage(m);
 	
 	VIDEOINFOHEADER *pvi = (VIDEOINFOHEADER *) pMediaType->AllocFormatBuffer(formatLength);
-
 	memcpy(pMediaType->Format(), format, formatLength);
 
 	pMediaType->SetTemporalCompression(true);
@@ -189,6 +205,8 @@ HRESULT CVideoSpringRecvPin::GetMediaType(CMediaType *pMediaType)
 	pMediaType->cbFormat = formatLength;
 	pMediaType->SetVariableSize();
 	//pMediaType->IsFixedSize();
+
+	delete(format);
 
 	return S_OK;
 }
@@ -208,7 +226,7 @@ HRESULT CVideoSpringRecvPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOCATOR_P
     {
         pRequest->cBuffers = 1;
     }
-    pRequest->cbBuffer = pvi->bmiHeader.biSizeImage + 100000;
+    pRequest->cbBuffer = pvi->bmiHeader.biSizeImage;
 
     ALLOCATOR_PROPERTIES Actual;
     hr = pAlloc->SetProperties(pRequest, &Actual);
@@ -232,15 +250,89 @@ HRESULT CVideoSpringRecvPin::DecideBufferSize(IMemAllocator *pAlloc, ALLOCATOR_P
         return hr;
     }
 	*/
-
+	return S_OK;
 }
 
+//
+// DoBufferProcessingLoop
+//
+// Grabs a buffer and calls the users processing function.
+// Overridable, so that different delivery styles can be catered for.
+HRESULT CVideoSpringRecvPin::DoBufferProcessingLoop(void) {
+
+    Command com;
+
+    OnThreadStartPlay();
+
+    do {
+	while (!CheckRequest(&com)) {
+
+	    IMediaSample *pSample;
+
+	    HRESULT hr = GetDeliveryBuffer(&pSample,NULL,NULL,0);
+	    if (FAILED(hr)) {
+                Sleep(1);
+		continue;	// go round again. Perhaps the error will go away
+			    // or the allocator is decommited & we will be asked to
+			    // exit soon.
+	    }
+
+		// Virtual function user will override.
+	    hr = FillBuffer(pSample);
+
+	    if (hr == S_OK) {
+		hr = Deliver(pSample);
+                pSample->Release();
+
+                // downstream filter returns S_FALSE if it wants us to
+                // stop or an error if it's reporting an error.
+                if(hr != S_OK)
+                {
+				  printf("Error deliverying sample!\n");
+                  DbgLog((LOG_TRACE, 2, TEXT("Deliver() returned %08x; stopping"), hr));
+                  return S_OK;
+                }
+
+	    } 
+		else
+		{
+			pSample->Release();
+		}
+		/*else if (hr == S_FALSE) {
+                // derived class wants us to stop pushing data
+		pSample->Release();
+		DeliverEndOfStream();
+		return S_OK;
+	    } else {
+                // derived class encountered an error
+                pSample->Release();
+		DbgLog((LOG_ERROR, 1, TEXT("Error %08lX from FillBuffer!!!"), hr));
+                DeliverEndOfStream();
+                m_pFilter->NotifyEvent(EC_ERRORABORT, hr, 0);
+                return hr;
+	    }*/
+
+            // all paths release the sample
+
+	}
+
+        // For all commands sent to us there must be a Reply call!
+
+	if (com == CMD_RUN || com == CMD_PAUSE) {
+	    Reply(NOERROR);
+	} else if (com != CMD_STOP) {
+	    Reply((DWORD) E_UNEXPECTED);
+	    DbgLog((LOG_ERROR, 1, TEXT("Unexpected command!!!")));
+		printf("Unexpected command!!!\n");
+	}
+    } while (com != CMD_STOP);
+    return S_FALSE;
+}
 
 // This is where we insert the DIB bits into the video stream.
 // FillBuffer is called once for every sample in the stream.
 HRESULT CVideoSpringRecvPin::FillBuffer(IMediaSample *pSample)
 {
-	static long frame = 1;
     BYTE *pData;
 
     CheckPointer(pSample, E_POINTER);
@@ -255,43 +347,72 @@ HRESULT CVideoSpringRecvPin::FillBuffer(IMediaSample *pSample)
 
     VIDEOINFOHEADER *pVih = (VIDEOINFOHEADER*)m_mt.pbFormat;
 
-	do
+/*	if(waiting == 0)
 	{
 		Message m;
 		m.header.command = C_RECEIVE;
 		m.header.length = 0;
 		sendMessage(server, &m);
-
+		waiting = 1;
+	}
+	else
+	{
 		fd_set read_set;
 
 		FD_ZERO(&read_set);
 		FD_SET(server, &read_set);
 		if(select(0, &read_set, NULL, NULL, 0) < 1)
 		{
-			return ERROR;
+			return S_FALSE;
 		}
 	
 		if(FD_ISSET(server, &read_set) || frame == 1)
 		{
+			Message m;
+			pSample->GetSize();
+			receiveMessage(server, m);
+			waiting = 0;
+
+			Message m2;
+			m2.header.command = C_RECEIVE;
+			m2.header.length = 0;
+			sendMessage(server, &m2);
+			waiting = 1;
+
+			if(m.header.length > 0)
+			{
+				memcpy(pData, m.data, m.header.length);
+				frame++;
+				return S_OK;
+			}
+		}
+	}
+	*/
+		fd_set read_set;
+
+		FD_ZERO(&read_set);
+		FD_SET(server, &read_set);
+		if(select(0, &read_set, NULL, NULL, 0) < 1)
+		{
+			return S_FALSE;
+		}
+	
+		if(FD_ISSET(server, &read_set) || frame == 1)
+		{
+			Message m;
 			pSample->GetSize();
 			receiveMessage(server, m);
 
 			if(m.header.length > 0)
 			{
 				memcpy(pData, m.data, m.header.length);
-				break;
+				frame++;
+				return S_OK;
 			}
 		}
-		else
-		{
-			break;
-		}
-	}
-	while(1);
-
-	frame++;
-
-    return S_OK;
+		
+	
+	return S_FALSE;
 }
 
 
