@@ -94,6 +94,7 @@ int sendMessage(SOCKET s, Message *m)
 					}
 #endif
 					printf("Error(send) %d\n", error);
+					
 					return -1;
 				}
 				else
@@ -138,6 +139,7 @@ int receiveMessage(SOCKET s, Message &m)
 
 				if(error == WSAEWOULDBLOCK)
 				{
+					printf("Blocking!\n");
 					continue;
 				}
 #else
@@ -190,6 +192,7 @@ int receiveMessage(SOCKET s, Message &m)
 
 					if(error == WSAEWOULDBLOCK)
 					{
+						printf("Blocking2!\n");
 						continue;
 					}
 #else
