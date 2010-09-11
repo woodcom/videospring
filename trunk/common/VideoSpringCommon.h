@@ -2,6 +2,8 @@
 
 #define H_VIDSPRINGCOMMON 1
 
+#define TCP_CHUNKSIZE 10000
+
 #if defined(WIN32) || defined(_WINDLL)
 
 #include <WinSock2.h>
@@ -19,6 +21,7 @@
 #include "vp8encoderidl.h"
 #include "vp8decoderidl.h"
 #include <BaseTyps.h>
+#include <stdint.h>
 
 /*** Define GUIDs ***/
 
@@ -108,13 +111,8 @@ enum
 
 struct MessageHeader
 {
-#ifdef WIN32
-	int command;
-	long length;
-#else
 	uint16_t command;
 	uint32_t length;
-#endif
 };
 
 struct Message
