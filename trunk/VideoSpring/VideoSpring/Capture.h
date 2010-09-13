@@ -5,6 +5,8 @@
 
 class Capture
 {
+public:
+	IVP8Encoder *encoderControl;
 private:
 	IGraphBuilder *graph;
 	IMediaControl *control;

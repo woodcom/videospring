@@ -1,26 +1,26 @@
 #include "VideoSpringSend.h"
 
+
 // Setup data
 
 const AMOVIESETUP_MEDIATYPE sudPinTypes =
 {
-    &MEDIATYPE_Video,           // Major type
+    &MEDIATYPE_NULL,           // Major type
     &MEDIASUBTYPE_NULL          // Minor type
 };
-
 
 const AMOVIESETUP_PIN sudPins  =
 {
     L"Input",                   // Pin string name
-    TRUE,                      // Is it rendered
+    FALSE,                      // Is it rendered
     FALSE,                      // Is it an output
     FALSE,                      // Allowed zero pins
     FALSE,                      // Allowed many
     &CLSID_NULL,                // Connects to filter
     L"Output",                  // Connects to pin
     1,                          // Number of pins types
-    &sudPinTypes } ;            // Pin information
-
+    &sudPinTypes				// Pin information
+};
 
 const AMOVIESETUP_FILTER sudVideoSpringSend =
 {
@@ -32,29 +32,20 @@ const AMOVIESETUP_FILTER sudVideoSpringSend =
 };
 
 
+
 // List of class IDs and creator functions for class factory
 
-CFactoryTemplate g_Templates []  = {
+CFactoryTemplate g_Templates[] = {
     { L"OscilloVideoSpringSend"
     , &CLSID_VideoSpringSend
     , CVideoSpringSendFilter::CreateInstance
     , NULL
     , &sudVideoSpringSend }
 };
-int g_cTemplates = sizeof(g_Templates) / sizeof(g_Templates[0]);
+int g_cTemplates = 1;
 
 
 
-//
-// CreateInstance
-//
-// This goes in the factory template table to create new instances
-//
-CUnknown * WINAPI CVideoSpringSendFilter::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
-{
-    return new CVideoSpringSendFilter(pUnk, phr);
-
-} // CreateInstance
 
 
 //
@@ -62,7 +53,6 @@ CUnknown * WINAPI CVideoSpringSendFilter::CreateInstance(LPUNKNOWN pUnk, HRESULT
 //
 // Create the filter, VideoSpringSend window, and input pin
 //
-#pragma warning(disable:4355 4127)
 
 CVideoSpringSendFilter::CVideoSpringSendFilter(LPUNKNOWN pUnk,HRESULT *phr) :
     CBaseFilter(NAME("VideoSpringSend"), pUnk, (CCritSec *) this, CLSID_VideoSpringSend)
@@ -93,6 +83,16 @@ CVideoSpringSendFilter::~CVideoSpringSendFilter()
 
 } // (Destructor)
 
+//
+// CreateInstance
+//
+// This goes in the factory template table to create new instances
+//
+CUnknown * WINAPI CVideoSpringSendFilter::CreateInstance(LPUNKNOWN pUnk, HRESULT *phr)
+{
+    return new CVideoSpringSendFilter(pUnk, phr);
+
+} // CreateInstance
 
 //
 // GetPinCount
@@ -127,22 +127,6 @@ CBasePin *CVideoSpringSendFilter::GetPin(int n)
 
 
 //
-// JoinFilterGraph
-//
-STDMETHODIMP CVideoSpringSendFilter::JoinFilterGraph(IFilterGraph *pGraph, LPCWSTR pName)
-{
-    HRESULT hr = CBaseFilter::JoinFilterGraph(pGraph, pName);
-    if(FAILED(hr))
-    {
-        return hr;
-    }
-
-    return hr;
-
-} // JoinFilterGraph
-
-
-//
 // Stop
 //
 // Switch the filter into stopped mode.
@@ -151,33 +135,7 @@ STDMETHODIMP CVideoSpringSendFilter::Stop()
 {
     CAutoLock lock(this);
 
-    if(m_State != State_Stopped)
-    {
-        // Pause the device if we were running
-        if(m_State == State_Running)
-        {
-            HRESULT hr = Pause();
-            if(FAILED(hr))
-            {
-                return hr;
-            }
-        }
-
-        DbgLog((LOG_TRACE,1,TEXT("Stopping....")));
-
-        // Base class changes state and tells pin to go to inactive
-        // the pin Inactive method will decommit our allocator which
-        // we need to do before closing the device
-
-        HRESULT hr = CBaseFilter::Stop();
-        if(FAILED(hr))
-        {
-            return hr;
-        }
-    }
-
-    return NOERROR;
-
+	return CBaseFilter::Stop();
 } // Stop
 
 
@@ -204,19 +162,8 @@ STDMETHODIMP CVideoSpringSendFilter::Pause()
 STDMETHODIMP CVideoSpringSendFilter::Run(REFERENCE_TIME tStart)
 {
     CAutoLock lock(this);
-    HRESULT hr = NOERROR;
-    FILTER_STATE fsOld = m_State;
 
-    // This will call Pause if currently stopped
-
-    hr = CBaseFilter::Run(tStart);
-    if(FAILED(hr))
-    {
-        return hr;
-    }
-
-    return NOERROR;
-
+	return CBaseFilter::Run(tStart);
 } // Run
 
 
@@ -226,7 +173,7 @@ STDMETHODIMP CVideoSpringSendFilter::Run(REFERENCE_TIME tStart)
 CVideoSpringSendInputPin::CVideoSpringSendInputPin(CVideoSpringSendFilter *pFilter,
                                HRESULT *phr,
                                LPCWSTR pPinName) :
-    CBaseInputPin(NAME("VideoSpringSend Input Pin"), pFilter, pFilter, phr, pPinName),
+    CRenderedInputPin(NAME("VideoSpringSend Input Pin"), pFilter, pFilter, phr, pPinName),
 	IVideoSpringSend()
 {
 	frame = 0;
@@ -263,6 +210,17 @@ STDMETHODIMP CVideoSpringSendInputPin::SetServerSocket(SOCKET s)
 }
 
 //
+// CheckMediaType
+//
+// Check that we can support a given proposed type
+//
+HRESULT CVideoSpringSendInputPin::CheckMediaType(const CMediaType *pmt)
+{
+    return S_OK;
+
+} // CheckMediaType
+
+//
 // BreakConnect
 //
 // This is called when a connection or an attempted connection is terminated
@@ -274,8 +232,7 @@ STDMETHODIMP CVideoSpringSendInputPin::SetServerSocket(SOCKET s)
 HRESULT CVideoSpringSendInputPin::BreakConnect()
 {
     // Check we have a valid connection
-
-    if(m_mt.IsValid() == FALSE)
+	if(m_mt.IsValid() == FALSE)
     {
         // Don't return an error here, because it could lead to 
         // ASSERT failures when rendering media files in GraphEdit.
@@ -292,17 +249,16 @@ HRESULT CVideoSpringSendInputPin::BreakConnect()
 
 } // BreakConnect
 
-
 //
-// CheckMediaType
+// ReceiveCanBlock
 //
-// Check that we can support a given proposed type
+// We don't hold up source threads on Receive
 //
-HRESULT CVideoSpringSendInputPin::CheckMediaType(const CMediaType *pmt)
+STDMETHODIMP CVideoSpringSendInputPin::ReceiveCanBlock()
 {
-    return NOERROR;
+    return S_FALSE;
+}
 
-} // CheckMediaType
 
 
 //

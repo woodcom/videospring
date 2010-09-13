@@ -52,7 +52,7 @@ int sendMessage(SOCKET s, Message *m)
 
 		bytesSent += bytes;
 	}
-	while(bytesSent < sizeof(MessageHeader));
+	while(bytesSent != sizeof(MessageHeader));
 
 	if(m->header.length > 0) 
 	{
@@ -106,7 +106,7 @@ int sendMessage(SOCKET s, Message *m)
 
 			bytesSent += bytes;
 		}
-		while(bytesSent < m->header.length);
+		while(bytesSent != m->header.length);
 	}
 
 	return NOERROR;
@@ -162,7 +162,7 @@ int receiveMessage(SOCKET s, Message &m)
 
 		bytesReceived += bytes;
 	}
-	while(bytesReceived < sizeof(MessageHeader));
+	while(bytesReceived != sizeof(MessageHeader));
 	
 	if(m.header.length > 0)
 	{
@@ -192,7 +192,6 @@ int receiveMessage(SOCKET s, Message &m)
 
 					if(error == WSAEWOULDBLOCK)
 					{
-						printf("Blocking2!\n");
 						continue;
 					}
 #else
@@ -215,7 +214,7 @@ int receiveMessage(SOCKET s, Message &m)
 
 			bytesReceived += bytes;
 		}
-		while(bytesReceived < m.header.length);
+		while(bytesReceived != m.header.length);
 	}
 
 	return NOERROR;

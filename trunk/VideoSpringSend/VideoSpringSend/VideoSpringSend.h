@@ -13,7 +13,7 @@ class CVideoSpringSendFilter;
 
 // Class supporting the VideoSpringSend input pin
 
-class CVideoSpringSendInputPin : public CBaseInputPin, public IVideoSpringSend
+class CVideoSpringSendInputPin : public CRenderedInputPin, public IVideoSpringSend
 {
     friend class CVideoSpringSendFilter;
 
@@ -38,6 +38,7 @@ public:
 
 	STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void **ppv);
 	STDMETHODIMP SetServerSocket(SOCKET s);
+	STDMETHODIMP ReceiveCanBlock();
 
     // Lets us know where a connection ends
     HRESULT BreakConnect();
@@ -87,8 +88,6 @@ public:
 
     // This goes in the factory template table to create new instances
     static CUnknown * WINAPI CreateInstance(LPUNKNOWN, HRESULT *);
-
-    STDMETHODIMP JoinFilterGraph(IFilterGraph * pGraph, LPCWSTR pName);
 
 private:
 

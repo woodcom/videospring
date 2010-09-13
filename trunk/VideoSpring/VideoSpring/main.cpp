@@ -99,6 +99,18 @@ int main(int argc, char** argv)
 				break;
 			}
 
+			case C_SET_FORCE_KEYFRAME:
+			{
+				c.encoderControl->SetForceKeyframe();
+				break;
+			}
+
+			case C_CLEAR_FORCE_KEYFRAME:
+			{
+				c.encoderControl->ClearForceKeyframe();
+				break;
+			}
+
 			default:
 				printf("Invalid command received: %d\n", msg.header.command);
 			}

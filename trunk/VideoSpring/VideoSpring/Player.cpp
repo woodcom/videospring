@@ -80,7 +80,6 @@ int Player::createGraph()
 	IEnumPins *pins;
 	IPin *pinOut, *decIn, *decOut, *renderPins[16];
 
-
 	/*** Load Filters ***/
 
 	if(FAILED(CoCreateInstance(CLSID_VideoSpringRecv, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&recv)))
