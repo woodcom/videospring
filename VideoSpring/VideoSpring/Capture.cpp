@@ -152,7 +152,6 @@ int Capture::runGraph()
 int Capture::createGraph()
 {
 	IBaseFilter *send, *cap, *encoder;
-	IVP8Encoder *encoderControl;
 	IVideoSpringSend *sendControl;
 	IPin *sendIn, *capOut, *encIn, *encOut, *colorIn, *colorOut, *pinOut;
 	IEnumPins *pins;
@@ -332,18 +331,18 @@ int Capture::createGraph()
 	encoderControl->SetThreadCount(threadcount);
 	encoderControl->SetEndUsage(kEndUsageCBR);
 	encoderControl->SetErrorResilient(1);
-//	encoderControl->SetKeyframeMode(kKeyframeModeAuto);
+	encoderControl->SetKeyframeMode(kKeyframeModeAuto);
 //	encoderControl->SetKeyframeMinInterval(0);
-//	encoderControl->SetKeyframeMaxInterval(999999);
+//	encoderControl->SetKeyframeMaxInterval(30);
 //	encoderControl->SetMaxQuantizer(4);
 //	encoderControl->SetMinQuantizer(56);
-	encoderControl->SetDecoderBufferSize(6);
-	encoderControl->SetDecoderBufferInitialSize(4);
-	encoderControl->SetDecoderBufferOptimalSize(5);
+//	encoderControl->SetDecoderBufferSize(6);
+//	encoderControl->SetDecoderBufferInitialSize(4);
+//	encoderControl->SetDecoderBufferOptimalSize(5);
 	encoderControl->SetResizeAllowed(1);
 //	encoderControl->SetForceKeyframe();
 	encoderControl->ApplySettings();
-
+	
 	IBaseFilter *colorConvert;
 
 	if(SUCCEEDED(CoCreateInstance(CLSID_DMOWrapperFilter, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&colorConvert)))

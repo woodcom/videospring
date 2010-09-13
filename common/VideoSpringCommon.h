@@ -106,7 +106,9 @@ enum
 	C_BROADCAST,
 	C_RECEIVE,
 	C_NEW_PRESENTER,
-	C_NEW_CLIENT
+	C_NEW_CLIENT,
+	C_SET_FORCE_KEYFRAME,
+	C_CLEAR_FORCE_KEYFRAME
 };
 
 struct MessageHeader
@@ -115,10 +117,18 @@ struct MessageHeader
 	uint32_t length;
 };
 
-struct Message
+class Message
 {
+public:
 	MessageHeader header;
 	BYTE *data;
+
+	Message()
+	{
+		header.command = 0;
+		header.length = 0;
+		data = NULL;
+	}
 };
 
 int sendMessage(SOCKET s, Message *m);
