@@ -21,9 +21,9 @@ class Client
 		BYTE *firstFrame;
 		long firstFrameLength;
 		
-		std::queue<SOCKET> destinations;
-		
 		int ready;
+		
+		std::queue<Message> buffer;
 		
 	private:
 	
@@ -35,7 +35,6 @@ class Client
 		
 		Client *next; //this will be a singly linked list
 
-		std::queue<Message> buffer;
 		
 		long bytesSent;
 //		long lastFrame;
@@ -46,7 +45,7 @@ class Client
 		long receivedBytes;
 		
 	public:
-		int Send(SOCKET socket, Message &m)
+		int Send(Message &m)
 		{
 			Message msg;
 			msg.header.command = m.header.command;
@@ -55,41 +54,47 @@ class Client
 			if(m.header.length > 0)
 			{
 				msg.data = (BYTE*)malloc(msg.header.length);
+
+				if(msg.data == NULL) 
+				{
+					printf("Error allocating %ld bytes.  Message will not be sent.\n", msg.header.length);
+					return -1;
+				}
+
 				memcpy(msg.data, m.data, msg.header.length);
 			}
 			
 			buffer.push(msg);
-			destinations.push(socket);
+
+			return 0;
 		}
 		
 		int Send()
 		{
-			
-			
 			if(buffer.empty())
 			{
 				return 0;
 			}
 			
-			if(bytesSent < sizeof(buffer.front().header))
+			if(bytesSent < sizeof(MessageHeader))
 			{
 				int size = TCP_CHUNKSIZE;
 				
-				if(sizeof(buffer.front().header) - bytesSent < TCP_CHUNKSIZE) size = sizeof(buffer.front().header) - bytesSent;
+				if(sizeof(MessageHeader) - bytesSent < TCP_CHUNKSIZE) size = sizeof(MessageHeader) - bytesSent;
 				
-				int bytes = send(destinations.front(), &buffer.front().header + bytesSent, size, 0);
+				int bytes = send(socket, &buffer.front().header + bytesSent, size, 0);
 				
 				if (bytes >= 0)
 				{
 					bytesSent += bytes;
 					
-					if(bytesSent == sizeof(buffer.front().header) )
+					if(bytesSent == sizeof(MessageHeader))
 					{
 						if(buffer.front().header.length == 0)
 						{
 							delete(buffer.front().data);
+							buffer.front().data = NULL;
 							buffer.pop();
-							destinations.pop();
 							bytesSent = 0;
 						}						
 					}
@@ -102,13 +107,13 @@ class Client
 			}
 			else
 			{
-				long partSent = bytesSent - sizeof(buffer.front().header);
+				long partSent = bytesSent - sizeof(MessageHeader);
 				
 				int size = TCP_CHUNKSIZE;
 				
 				if(buffer.front().header.length - partSent < TCP_CHUNKSIZE) size = buffer.front().header.length - partSent;
 				
-				int bytes = send(destinations.front(), buffer.front().data + partSent, size, 0);
+				int bytes = send(socket, buffer.front().data + partSent, size, 0);
 				
 				if (bytes >= 0)
 				{
@@ -117,13 +122,12 @@ class Client
 					if(bytesSent - sizeof(buffer.front().header) == buffer.front().header.length )
 					{
 						buffer.pop();
-						destinations.pop();
 						bytesSent = 0;
 					}
 				}
 				else
 				{
-					printf("Error sending data of length %ld!\n", buffer.front().header.length);
+//					printf("Error sending data of length %ld!\n", buffer.front().header.length);
 					return errno;
 				}
 			}
@@ -133,20 +137,23 @@ class Client
 		
 		int Receive()
 		{
-			if(header)
+			if(receivedBytes < sizeof(MessageHeader))
 			{
-				int bytes = recv(socket, &msg.header + receivedBytes, sizeof(msg.header) - receivedBytes, 0);
+				int size = TCP_CHUNKSIZE;
+				
+				if(sizeof(MessageHeader) - receivedBytes < TCP_CHUNKSIZE) size = sizeof(MessageHeader) - receivedBytes;
+				
+				int bytes = recv(socket, ((BYTE*)&msg.header) + receivedBytes, size, 0);
 
-				if(bytes > 0)
+				if(bytes >= 0)
 				{
 					receivedBytes += bytes;
 
-					if(receivedBytes == sizeof(msg.header))
+					if(receivedBytes == sizeof(MessageHeader))
 					{
-						receivedBytes = 0;
-
 						if(msg.header.length == 0)
 						{
+							receivedBytes = 0;
 							if(doCommand(msg) != NOERROR) 
 							{
 								return errno;
@@ -155,7 +162,11 @@ class Client
 						else
 						{
 							msg.data = (BYTE*)malloc(msg.header.length);
-							header = 0;
+							if(msg.data == NULL)
+							{
+								printf("Error allocating %ld bytes.\n", msg.header.length);
+								return -1;
+							}
 						}
 					}
 				}
@@ -167,15 +178,20 @@ class Client
 			}
 			else
 			{
-				int bytes = recv(socket, msg.data + receivedBytes, msg.header.length - receivedBytes, 0);
+				long partLength = receivedBytes - sizeof(MessageHeader);
+
+				long size = TCP_CHUNKSIZE;
+				
+				if(msg.header.length - partLength < TCP_CHUNKSIZE) size = msg.header.length - partLength;
+
+				int bytes = recv(socket, msg.data + partLength, size, 0);
 
 				if(bytes > 0)
 				{
 					receivedBytes += bytes;
 
-					if(receivedBytes >= msg.header.length)
+					if(receivedBytes - sizeof(MessageHeader) == msg.header.length)
 					{
-						header = 1;
 						receivedBytes = 0;
 
 						if(doCommand(msg) != NOERROR)
@@ -216,7 +232,7 @@ class Client
 							msg.header.command = C_NEW_PRESENTER;
 							msg.header.length = sizeof(long);
 							msg.data = (BYTE*)&c->id;
-							Send(socket, msg);
+							Send(msg);
 						}
 						c = c->GetNext();
 					}
@@ -261,7 +277,7 @@ class Client
 						c = c->GetNext();
 					}
 
-					return Send(socket, msg);
+					return Send(msg);
 				
 					break;
 				}
@@ -291,12 +307,18 @@ class Client
 								c->firstFrameLength = 1;
 								msg.header.length = firstFrameLength;
 								msg.data = firstFrame;
+
+								Message fc;
+								fc.header.command = C_SET_FORCE_KEYFRAME;
+								fc.header.length = 0;
+								Send(msg);
 							}
 							
-							c->Send(c->GetSocket(), msg);
+							c->Send(msg);
 						}
 						c = c->GetNext();
 					}
+
 					break;
 				}
 
@@ -304,13 +326,7 @@ class Client
 				{
 					printf("Ready to receive frames.\n");
 					ready = 1;
-/*					Client *c = client_head;
-					if(formatLength > 0)
-					while(c != NULL)
-					{
-						if(c->GetType() == 1 && c->pid == id)
-						{
-							Message m;
+				/*			Message m;
 							if(firstFrameLength == 0)
 							{
 								firstFrameLength = firstFrameLength;
@@ -389,7 +405,7 @@ class Client
                                                         msg.header.length = sizeof(uint32_t);
                                                         msg.data = (BYTE*)&id;
 
-							Send(c->GetSocket(), msg);
+							c->Send(msg);
 						}
 						c = c->GetNext();
 					}
@@ -446,6 +462,7 @@ class Client
 			cur->next = c->next;
 
 			delete(c);
+			c = NULL;
 
 			return cur->next;
 		}
@@ -518,11 +535,14 @@ int InitSets(SOCKET ListenSocket)
 
 	while(c != NULL)
 	{
-		if(!c->destinations.empty())
+		if(!c->buffer.empty())
 		{
 			FD_SET(c->GetSocket(), &write_set);
 		}
-		FD_SET(c->GetSocket(), &read_set);
+		else
+		{
+			FD_SET(c->GetSocket(), &read_set);
+		}
 
 		if(c->GetSocket() > max) max = c->GetSocket();
 			FD_SET(c->GetSocket(), &except_set); 
@@ -622,18 +642,24 @@ void AcceptConnections(SOCKET ListenSocket)
 					if(ret != 0 && ret != EAGAIN && ret != EWOULDBLOCK) // Disconnect client on errors
 					{
 						printf("Read Error %d\n", ret);
-						printf("Client #%ld Disconnected", c->id);
 
-						if(c == client_head)
+						//if(ret == ENOTCONN)
 						{
-							Client *tmp = client_head;
-							c = client_head = client_head->GetNext();
-							delete(tmp);
+							printf("Client #%ld Disconnected\n", c->id);
+
+							if(c == client_head)
+							{
+								Client *tmp = client_head;
+								c = client_head = client_head->GetNext();
+								delete(tmp);
+								tmp = NULL;
+							}
+							else
+							{
+								c = client_head->del(c);
+							}
 						}
-						else
-						{
-							c = client_head->del(c);
-						}
+
 						continue;
 					}
 				}
@@ -648,18 +674,24 @@ void AcceptConnections(SOCKET ListenSocket)
 					if(ret != 0 && ret != EAGAIN && ret != EWOULDBLOCK) // Disconnect client on errors
 					{
 						printf("Write Error %d\n", ret);
-						printf("Client #%ld Disconnected", c->id);
+						
+						if(ret == ENOTCONN)
+						{
+							printf("Client #%ld Disconnected", c->id);
+	
+							if(c == client_head)
+							{
+								Client *tmp = client_head;
+								c = client_head = client_head->GetNext();
+								delete(tmp);
+								tmp = NULL;
+							}
+							else
+							{
+								c = client_head->del(c);
+							}
+						}
 
-						if(c == client_head)
-						{
-							Client *tmp = client_head;
-							c = client_head = client_head->GetNext();
-							delete(tmp);
-						}
-						else
-						{
-							c = client_head->del(c);
-						}
 						continue;
 					}
 				}
@@ -675,6 +707,7 @@ void AcceptConnections(SOCKET ListenSocket)
 						Client *tmp = client_head;
 						c = client_head = client_head->GetNext();
 						delete(tmp);
+						tmp = NULL;
 					}
 					else
 					{
