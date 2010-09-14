@@ -326,64 +326,7 @@ class Client
 				{
 					printf("Ready to receive frames.\n");
 					ready = 1;
-				/*			Message m;
-							if(firstFrameLength == 0)
-							{
-								firstFrameLength = firstFrameLength;
-								m.header.length = firstFrameLength;
-								m.data = firstFrame;
-								c->renderedFrame = 0;
-							}
-							else
-							{
-								BYTE *frame = NULL;
-								long frameLength = 0;
-								long newFrame = 0;
-								for(int n = 0; n < BUFF_SIZE; n++)
-								{
-									if(frames[n].number == c->renderedFrame + 1)
-									{
-										m.data = frames[n].frame;
-										m.header.length = frames[n].frameLength;
-										newFrame = c->renderedFrame + 1;
-										break;
-									}
 
-									if(frames[n].number == lastFrame)
-									{
-										m.data = frames[n].frame;
-										m.header.length = frames[n].frameLength;
-										newFrame = lastFrame;
-									}
-								}
-
-								if(newFrame == 0 || newFrame == c->renderedFrame)
-								{
-									Message m;
-									m.header.command = 0;
-									m.header.length = 0;
-									m.data = NULL;
-									return Send(c->GetSocket(), m);
-								}
-
-								if(newFrame == lastFrame && newFrame != c->renderedFrame + 1)
-								{
-									printf("%ld frames dropped\n", newFrame - c->renderedFrame);
-								}
-
-								c->renderedFrame = newFrame;
-							}
-
-							return Send(c->GetSocket(), m);
-						}
-						c = c->GetNext();
-					}
-	/*
-					Message m;
-					m.header.command = 0;
-					m.header.length = 0;
-					m.data = NULL;
-					return Send(socket, m);*/
 					break;
 				}
  
@@ -510,6 +453,27 @@ class Client
 		//destructor
 		~Client()
 		{
+			if(type == 1)
+			{
+				printf("Dropping presenter...\n");
+				Client * c = client_head;
+
+				while(c != NULL)
+				{
+					if(c->GetType() == 2)
+					{
+						Message msg;
+						msg.header.command = C_DROP_PRESENTER;
+						msg.header.length = sizeof(id);
+						msg.data = (BYTE*)malloc(sizeof(id));
+						memcpy(msg.data, &id, sizeof(id));
+
+						c->Send(msg);
+					}
+
+					c = c->GetNext();	
+				}
+			}
 			total_clients--;
 			closesocket(socket);
 		}
@@ -641,9 +605,7 @@ void AcceptConnections(SOCKET ListenSocket)
 
 					if(ret != 0 && ret != EAGAIN && ret != EWOULDBLOCK) // Disconnect client on errors
 					{
-						printf("Read Error %d\n", ret);
-
-						//if(ret == ENOTCONN)
+						if(ret == ENOTCONN || ret == 104)
 						{
 							printf("Client #%ld Disconnected\n", c->id);
 
@@ -659,6 +621,10 @@ void AcceptConnections(SOCKET ListenSocket)
 								c = client_head->del(c);
 							}
 						}
+						else
+						{
+							printf("Unhandled Read Error %d\n", ret);
+						}
 
 						continue;
 					}
@@ -672,12 +638,10 @@ void AcceptConnections(SOCKET ListenSocket)
 					int ret = c->Send();
 
 					if(ret != 0 && ret != EAGAIN && ret != EWOULDBLOCK) // Disconnect client on errors
-					{
-						printf("Write Error %d\n", ret);
-						
-						if(ret == ENOTCONN)
+					{				
+						if(ret == ENOTCONN || ret == 104)
 						{
-							printf("Client #%ld Disconnected", c->id);
+							printf("Client #%ld Disconnected\n", c->id);
 	
 							if(c == client_head)
 							{
@@ -690,6 +654,10 @@ void AcceptConnections(SOCKET ListenSocket)
 							{
 								c = client_head->del(c);
 							}
+						}
+						else
+						{
+							printf("Unhandled Write Error %d\n", ret);
 						}
 
 						continue;
