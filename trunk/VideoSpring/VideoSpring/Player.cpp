@@ -52,33 +52,39 @@ Player::Player(const char *ip, long id)
 	{
 		runGraph();
 	}
+
 }
 
 Player::~Player()
 {
-	video->Release();
-	control->Release();
-	event->Release();
-	graph->Release();
+	printf("Cleaning up player graph...");
+
+	video->put_Visible(OAFALSE);
+	video->put_Owner(NULL);
+
+	if(control != NULL)
+		control->Stop();
+
+	printf("done.\n");
 }
 
 int Player::runGraph()
 {
 	control->Run();
-	//event->WaitForCompletion(INFINITE, 0);
+
 	return 0;
 }
 
 int Player::createGraph()
 {
-	IBaseFilter *recv, *decoder, *vmr9;
-	IVMRMixerControl9 *vmr9control;
-	IVMRFilterConfig9 *vmr9config;
-	IVP8PostProcessing *decoderControl;
-	IVideoSpringRecv *recvControl;
+	CComPtr<IBaseFilter> recv, decoder, vmr9;
+	CComPtr<IVMRMixerControl9> vmr9control;
+	CComPtr<IVMRFilterConfig9> vmr9config;
+	CComPtr<IVP8PostProcessing> decoderControl;
+	CComPtr<IVideoSpringRecv> recvControl;
 
-	IEnumPins *pins;
-	IPin *pinOut, *decIn, *decOut, *renderPins[16];
+	CComPtr<IEnumPins> pins;
+	CComPtr<IPin> pinOut, decIn, decOut, renderPins[16];
 
 	/*** Load Filters ***/
 
@@ -151,9 +157,9 @@ int Player::createGraph()
 		return 1;
 	}
 
-	pins->Release();
+	CComPtr<IEnumPins> pins2, pins3;
 
-	if(FAILED(vmr9->EnumPins(&pins)))
+	if(FAILED(vmr9->EnumPins(&pins2)))
 	{
 		printf("Failed to enumerate pins!\n");
 		return 1;
@@ -161,22 +167,20 @@ int Player::createGraph()
 
 	for(int n = 0; n < 1; n++)
 	{
-		if(FAILED(pins->Next(1, &renderPins[n], NULL)))
+		if(FAILED(pins2->Next(1, &renderPins[n], NULL)))
 		{
 			printf("Failed to get next render pin!\n");
 			continue;
 		}
 	}
 
-	pins->Release();
-
-	if(FAILED(recv->EnumPins(&pins)))
+	if(FAILED(recv->EnumPins(&pins3)))
 	{
 		printf("Failed to enumerate pins!\n");
 		return 1;
 	}
 
-	if(FAILED(pins->Next(1, &pinOut, NULL)))
+	if(FAILED(pins3->Next(1, &pinOut, NULL)))
 	{
 		printf("Failed to get next pin!\n");
 		return 1;
@@ -204,13 +208,13 @@ int Player::createGraph()
 		printf("Failed to add receive filter to graph!\n");
 		return 1;
 	}
-	/*
+	
 	if(FAILED(graph->AddFilter(vmr9, NULL)))
 	{
 		printf("Failed to add VMR9 filter to graph!\n");
 		return 1;
 	}
-	*/
+	
 
 	if(FAILED(graph->Connect(pinOut, decIn)))
 	{
@@ -219,36 +223,22 @@ int Player::createGraph()
 	}
 
 
-	graph->Render(decOut);
-	/*if(FAILED(graph->Connect(decOut, renderPins[0])))
+//	graph->Render(decOut);
+	if(FAILED(graph->Connect(decOut, renderPins[0])))
 	{
 		printf("Failed to connect output pin to renderer!\n");
 		return 1;
-	}*/
+	}
 
 
 	VMR9NormalizedRect r;
 
 	r.left = 0;
-	r.right = .5;
+	r.right = 1;
 	r.top = 0;
-	r.bottom = .5;
+	r.bottom = 1;
 
 	vmr9control->SetOutputRect(0, &r);
-
-	for(int n = 0; n < 1; n++)
-		renderPins[n]->Release();
-
-	decOut->Release();
-	decIn->Release();
-	pinOut->Release();
-	pins->Release();
-	recv->Release();
-	decoder->Release();
-	vmr9->Release();
-	vmr9control->Release();
-	vmr9config->Release();
-	decoderControl->Release();
 
 	return 0;
 }
