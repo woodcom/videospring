@@ -58,6 +58,8 @@ CVideoSpringSendFilter::CVideoSpringSendFilter(LPUNKNOWN pUnk,HRESULT *phr) :
     CBaseFilter(NAME("VideoSpringSend"), pUnk, (CCritSec *) this, CLSID_VideoSpringSend)
 {
     ASSERT(phr);
+	
+	m_pInputPin = NULL;
 
     // Create the single input pin
     m_pInputPin = new CVideoSpringSendInputPin(this,phr,L"VideoSpringSend Input Pin");
@@ -76,10 +78,10 @@ CVideoSpringSendFilter::CVideoSpringSendFilter(LPUNKNOWN pUnk,HRESULT *phr) :
 CVideoSpringSendFilter::~CVideoSpringSendFilter()
 {
     // Delete the contained interfaces
-
+printf("Deconstructing VideSpringSendFilter...");
     ASSERT(m_pInputPin);
-    delete m_pInputPin;
-    m_pInputPin = NULL;
+	delete(m_pInputPin);
+printf("done.\n");
 
 } // (Destructor)
 

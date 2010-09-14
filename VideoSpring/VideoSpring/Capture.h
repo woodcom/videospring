@@ -6,12 +6,12 @@
 class Capture
 {
 public:
-	IVP8Encoder *encoderControl;
+	CComPtr<IVP8Encoder> encoderControl;
 private:
-	IGraphBuilder *graph;
-	IMediaControl *control;
-	IMediaEvent   *event;
-	IVideoWindow *video;
+	CComPtr<IGraphBuilder> graph;
+	CComPtr<IMediaControl> control;
+	CComPtr<IMediaEvent>   event;
+	CComPtr<IVideoWindow> video;
 
 	SOCKET server;
 

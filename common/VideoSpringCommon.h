@@ -7,6 +7,7 @@
 #if defined(WIN32) || defined(_WINDLL)
 
 #include <WinSock2.h>
+#include <stdint.h>
 #include <streams.h>
 #include <commctrl.h>
 #include <mmsystem.h>
@@ -14,6 +15,7 @@
 #include <Wmcodecdsp.h>
 #include <dmodshow.h>
 #include <dmo.h>
+#include <tchar.h>
 #include <strsafe.h>
 #include <DShow.h>
 #include <d3d9.h>
@@ -21,7 +23,7 @@
 #include "vp8encoderidl.h"
 #include "vp8decoderidl.h"
 #include <BaseTyps.h>
-#include <stdint.h>
+#include <atlbase.h>
 
 /*** Define GUIDs ***/
 
@@ -108,7 +110,8 @@ enum
 	C_NEW_PRESENTER,
 	C_NEW_CLIENT,
 	C_SET_FORCE_KEYFRAME,
-	C_CLEAR_FORCE_KEYFRAME
+	C_CLEAR_FORCE_KEYFRAME,
+	C_DROP_PRESENTER
 };
 
 struct MessageHeader

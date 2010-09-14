@@ -6,10 +6,10 @@
 class Player
 {
 private:
-	IGraphBuilder *graph;
-	IMediaControl *control;
-	IMediaEvent   *event;
-	IVideoWindow *video;
+	CComPtr<IGraphBuilder> graph;
+	CComPtr<IMediaControl> control;
+	CComPtr<IMediaEvent>   event;
+	CComPtr<IVideoWindow> video;
 
 	SOCKET server;
 	long presenterId;

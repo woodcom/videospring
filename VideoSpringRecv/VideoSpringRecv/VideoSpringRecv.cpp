@@ -267,7 +267,7 @@ HRESULT CVideoSpringRecvPin::DoBufferProcessingLoop(void) {
     do {
 	while (!CheckRequest(&com)) {
 
-	    IMediaSample *pSample;
+	    CComPtr<IMediaSample> pSample;
 
 	    HRESULT hr = GetDeliveryBuffer(&pSample,NULL,NULL,0);
 	    if (FAILED(hr)) {
@@ -281,39 +281,18 @@ HRESULT CVideoSpringRecvPin::DoBufferProcessingLoop(void) {
 	    hr = FillBuffer(pSample);
 
 	    if (hr == S_OK) {
-		hr = Deliver(pSample);
-                pSample->Release();
+			hr = Deliver(pSample);
 
-                // downstream filter returns S_FALSE if it wants us to
-                // stop or an error if it's reporting an error.
-                if(hr != S_OK)
-                {
-				  printf("Error deliverying sample!\n");
-                  DbgLog((LOG_TRACE, 2, TEXT("Deliver() returned %08x; stopping"), hr));
-                  return S_OK;
-                }
+            // downstream filter returns S_FALSE if it wants us to
+            // stop or an error if it's reporting an error.
+            if(hr != S_OK)
+            {
+				printf("Error deliverying sample!\n");
+				DbgLog((LOG_TRACE, 2, TEXT("Deliver() returned %08x; stopping"), hr));
+				return S_OK;
+            }
 
 	    } 
-		else
-		{
-			pSample->Release();
-		}
-		/*else if (hr == S_FALSE) {
-                // derived class wants us to stop pushing data
-		pSample->Release();
-		DeliverEndOfStream();
-		return S_OK;
-	    } else {
-                // derived class encountered an error
-                pSample->Release();
-		DbgLog((LOG_ERROR, 1, TEXT("Error %08lX from FillBuffer!!!"), hr));
-                DeliverEndOfStream();
-                m_pFilter->NotifyEvent(EC_ERRORABORT, hr, 0);
-                return hr;
-	    }*/
-
-            // all paths release the sample
-
 	}
 
         // For all commands sent to us there must be a Reply call!
@@ -392,7 +371,12 @@ HRESULT CVideoSpringRecvPin::FillBuffer(IMediaSample *pSample)
 
 		FD_ZERO(&read_set);
 		FD_SET(server, &read_set);
-		if(select(0, &read_set, NULL, NULL, 0) < 1)
+
+		timeval t;
+		t.tv_sec = 0;
+		t.tv_usec = 0;
+
+		if(select(0, &read_set, NULL, NULL, &t) < 1)
 		{
 			return S_FALSE;
 		}
@@ -410,7 +394,6 @@ HRESULT CVideoSpringRecvPin::FillBuffer(IMediaSample *pSample)
 				return S_OK;
 			}
 		}
-		
 	
 	return S_FALSE;
 }
