@@ -27,10 +27,16 @@
     <ClCompile Include="Player.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\common\vp8encoderidl.c">
+    <ClCompile Include="..\..\common\vp8decoderidl.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\common\vp8decoderidl.c">
+    <ClCompile Include="..\..\common\vp8encoderidl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\common\webmmuxidl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\common\VorbisEncodeSettings.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -51,6 +57,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\common\vp8decoderidl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\common\webmmuxidl.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="samplegrabber.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

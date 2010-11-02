@@ -1,25 +1,29 @@
 #ifndef H_CAPTURE
 #define H_CAPTURE
 
+//#include <streams.h>
 #include "../../common/VideoSpringCommon.h"
-
+#include <fstream>
+#define BUFFERS 10
 class Capture
 {
-public:
-	CComPtr<IVP8Encoder> encoderControl;
 private:
-	CComPtr<IGraphBuilder> graph;
-	CComPtr<IMediaControl> control;
-	CComPtr<IMediaEvent>   event;
-	CComPtr<IVideoWindow> video;
+    HWAVEIN _waveHandle;
+    WAVEHDR _waveHeader[BUFFERS];
+    WORD *  _waveBuffer[BUFFERS];
+
+	HANDLE pipe;
+
+	PROCESS_INFORMATION pi;
+	STARTUPINFO si;
 
 	SOCKET server;
 
-	int createGraph();
-	int runGraph();
+	int startAudioCapture();
 
+	static void CALLBACK waveInProc(HWAVEIN hwi, UINT uMsg, DWORD_PTR dwInstance, DWORD_PTR dwParam1, DWORD_PTR dwParam2);
 public:
-	Capture(const char *ip);
+	Capture(unsigned long ip);
 	~Capture();
 };
 #endif

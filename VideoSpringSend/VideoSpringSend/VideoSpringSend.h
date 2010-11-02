@@ -13,7 +13,7 @@ class CVideoSpringSendFilter;
 
 // Class supporting the VideoSpringSend input pin
 
-class CVideoSpringSendInputPin : public CRenderedInputPin, public IVideoSpringSend
+class CVideoSpringSendInputPin : public CBaseInputPin, public IStream, /*public IMemInputPin,*/ public IVideoSpringSend
 {
     friend class CVideoSpringSendFilter;
 
@@ -27,6 +27,7 @@ private:
 	long formatLength;
 	BYTE *format;
 	long frame;
+	__int64 filepos;
     CVideoSpringSendFilter *m_pFilter;         // The filter that owns us
 
 public:
@@ -38,7 +39,6 @@ public:
 
 	STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void **ppv);
 	STDMETHODIMP SetServerSocket(SOCKET s);
-	STDMETHODIMP ReceiveCanBlock();
 
     // Lets us know where a connection ends
     HRESULT BreakConnect();
@@ -46,18 +46,21 @@ public:
     // Check that we can support this input type
     HRESULT CheckMediaType(const CMediaType *pmt);
 
-    // Actually set the current format
-    HRESULT SetMediaType(const CMediaType *pmt);
+	HRESULT Active(void);
+ 
+	// IStream
 
-    // IMemInputPin virtual methods
-
-    // Override so we can show and hide the window
-    HRESULT Active(void);
-    HRESULT Inactive(void);
-
-    // Here's the next block of data from the stream.
-    // AddRef it if you are going to hold onto it
-    STDMETHODIMP Receive(IMediaSample *pSample);
+	STDMETHODIMP Read(void *,ULONG,ULONG *);
+	STDMETHODIMP Write(const void *,ULONG,ULONG *);
+	STDMETHODIMP Seek(LARGE_INTEGER,DWORD,ULARGE_INTEGER *);
+	STDMETHODIMP SetSize(ULARGE_INTEGER);
+	STDMETHODIMP CopyTo(IStream *,ULARGE_INTEGER,ULARGE_INTEGER *,ULARGE_INTEGER *);
+	STDMETHODIMP Commit(DWORD);
+	STDMETHODIMP Revert(void);
+	STDMETHODIMP LockRegion(ULARGE_INTEGER,ULARGE_INTEGER,DWORD);
+	STDMETHODIMP UnlockRegion(ULARGE_INTEGER,ULARGE_INTEGER,DWORD);
+	STDMETHODIMP Stat(STATSTG *,DWORD);
+	STDMETHODIMP Clone(IStream **);
 
 }; // CVideoSpringSendInputPin
 

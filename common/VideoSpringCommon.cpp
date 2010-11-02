@@ -7,7 +7,7 @@ int sendMessage(SOCKET s, Message *m)
 
 	do
 	{
-		int size = TCP_CHUNKSIZE;
+		unsigned int size = TCP_CHUNKSIZE;
 
 		if(sizeof(MessageHeader) - bytesSent < size)
 		{
@@ -60,7 +60,7 @@ int sendMessage(SOCKET s, Message *m)
 
 		do
 		{
-			int size = TCP_CHUNKSIZE;
+			unsigned int size = TCP_CHUNKSIZE;
 
 			if(m->header.length - bytesSent < size)
 			{
