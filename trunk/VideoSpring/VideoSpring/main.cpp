@@ -1,7 +1,32 @@
+#include "../../common/VideoSpringCommon.h"
 #include "Capture.h"
 #include "Player.h"
 #include <map>
+#include <d3d9.h>
 
+#pragma comment (lib, "d3d9.lib")
+
+CComPtr<IDirect3D9> d3d;
+CComPtr<IDirect3DDevice9> d3ddev;
+
+void initD3D(HWND hwnd)
+{
+	d3d = Direct3DCreate9(D3D_SDK_VERSION);
+
+	D3DPRESENT_PARAMETERS d3dpp;
+
+	ZeroMemory(&d3dpp, sizeof(d3dpp));
+	d3dpp.Windowed = FALSE;
+	d3dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+	d3dpp.hDeviceWindow = hwnd;
+
+	d3d->CreateDevice(D3DADAPTER_DEFAULT,
+						D3DDEVTYPE_HAL,
+						hwnd,
+						D3DCREATE_SOFTWARE_VERTEXPROCESSING,
+						&d3dpp,
+						&d3ddev);
+}
 
 const char g_szClassName[] = "myWindowClass";
 
@@ -34,17 +59,33 @@ int main(int argc, char** argv)
 	    printf("Error.\n");
 		exit(1);
 	}
+	
+	char hostname[] = "condor.lifespringschool.org";
 
-	//char ip[1024];
-	char ip[] = "184.73.115.220";
+	HOSTENT *host;
+	unsigned long ip;
+
+	if(!(host = gethostbyname(hostname)))
+	{
+		printf("Error resolving hostname.\n");
+		exit(1);
+	}
+
+	if(host->h_addr_list && host->h_addr_list[0])
+	{
+		memcpy(&ip, host->h_addr_list[0], sizeof(ip));
+	}
+	else
+	{
+		printf("No ip found for host.\n");
+		exit(1);
+	}
 
 //	printf("Enter server ip: ");
 //	scanf("%s", ip);
 
-	printf("Connecting to %s...\n", ip);
+	printf("Connecting to %s...\n", hostname);
 
-	Capture c(ip);
-	printf("Capture started.\n");
 /*	Player p(ip);
 	printf("Player started.\n");*/
 
@@ -60,7 +101,7 @@ int main(int argc, char** argv)
 	sockaddr_in serveraddr;
 
 	serveraddr.sin_family = AF_INET;
- 	serveraddr.sin_addr.s_addr = inet_addr(ip);
+ 	serveraddr.sin_addr.s_addr = ip;
 	serveraddr.sin_port = htons(1234);
 
 	if(connect(server, (SOCKADDR*)&serveraddr, sizeof(sockaddr)) == SOCKET_ERROR)
@@ -85,17 +126,19 @@ int main(int argc, char** argv)
 		WSACleanup();
 		return -1;
 	}
+	
+	Capture *c;
+
+/*	printf("Capture (y/n): ");
+	char buffer[1024];
+	scanf("%s", buffer);
+	if(buffer[0] == 'y')*/
+	{
+		c = new Capture(ip);
+		printf("Capture started.\n");
+	}
 
 	std::map<long, Player *> players;
-
-
-
-
-
-
-
-
-
 
     WNDCLASSEX wc;
     HWND hwnd;
@@ -141,7 +184,7 @@ int main(int argc, char** argv)
     ShowWindow(hwnd, 1);
     UpdateWindow(hwnd);
 
-
+	initD3D(hwnd);
 
 
 
@@ -203,13 +246,13 @@ int main(int argc, char** argv)
 
 			case C_SET_FORCE_KEYFRAME:
 			{
-				c.encoderControl->SetForceKeyframe();
+//				c.encoderControl->SetForceKeyframe();
 				break;
 			}
 
 			case C_CLEAR_FORCE_KEYFRAME:
 			{
-				c.encoderControl->ClearForceKeyframe();
+	//			c.encoderControl->ClearForceKeyframe();
 				break;
 			}
 

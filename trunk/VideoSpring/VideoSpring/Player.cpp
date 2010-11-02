@@ -1,6 +1,78 @@
 #include "Player.h"
+#include "../../common/VideoSpringCommon.h"
 
-Player::Player(const char *ip, long id)
+DWORD WINAPI readThread(LPVOID parms)
+{
+	struct PARMS
+	{
+		LPVOID pipe;
+		SOCKET socket;
+		long presenterId;
+	};
+
+	PARMS *p = (PARMS*)parms;
+
+	HANDLE pipe = p->pipe;
+
+	if(pipe == NULL)
+	{
+		printf("Invalid pipe.\n");
+		return -1;
+	}
+	
+	BOOL connected = false;
+	int err = 0;
+
+	connected = ConnectNamedPipe(pipe, NULL) ? true : ((err = GetLastError()) == ERROR_PIPE_CONNECTED);
+
+	if(!connected)
+	{
+		printf("Error connecting pipe. %d\n", err);
+		return -1;
+	}
+
+	DWORD pid = p->presenterId;
+
+	Message m;
+
+	m.header.command = C_SET_PRESENTER_RECV;
+	m.header.length = sizeof(DWORD);
+	m.data = (BYTE*)&pid;
+
+	sendMessage(p->socket, &m);
+
+	while(1)
+	{
+		receiveMessage(p->socket, m);
+
+		bool success;
+		DWORD bytes = 0;
+
+		success = (bool)WriteFile(pipe, m.data, m.header.length, &bytes, NULL);
+
+		if(!success || bytes == 0)
+		{
+			if(GetLastError() == ERROR_BROKEN_PIPE)
+			{
+				printf("Write Pipe stopping...\n");
+			}
+			else
+			{
+				printf("WriteFile failed, pipe stopping...\n");
+			}
+			break;
+		}
+	}
+
+	FlushFileBuffers(pipe);
+	DisconnectNamedPipe(pipe);
+	CloseHandle(pipe);
+
+	return 1;
+}
+
+
+Player::Player(unsigned long ip, long id)
 {
 	presenterId = id;
 	server = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -14,7 +86,7 @@ Player::Player(const char *ip, long id)
 	sockaddr_in serveraddr;
 
 	serveraddr.sin_family = AF_INET;
- 	serveraddr.sin_addr.s_addr = inet_addr(ip);
+ 	serveraddr.sin_addr.s_addr = ip;
 	serveraddr.sin_port = htons(1234);
 
 	if(connect(server, (SOCKADDR*)&serveraddr, sizeof(sockaddr)) == SOCKET_ERROR)
@@ -77,26 +149,18 @@ int Player::runGraph()
 
 int Player::createGraph()
 {
-	CComPtr<IBaseFilter> recv, decoder, vmr9;
+	CComPtr<IBaseFilter> recv, vmr9;
 	CComPtr<IVMRMixerControl9> vmr9control;
 	CComPtr<IVMRFilterConfig9> vmr9config;
-	CComPtr<IVP8PostProcessing> decoderControl;
-	CComPtr<IVideoSpringRecv> recvControl;
+	CComPtr<IFileSourceFilter> sourceControl;
 
-	CComPtr<IEnumPins> pins;
-	CComPtr<IPin> pinOut, decIn, decOut, renderPins[16];
+	CComPtr<IPin> fileOut;
 
 	/*** Load Filters ***/
 
-	if(FAILED(CoCreateInstance(CLSID_VideoSpringRecv, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&recv)))
+	if(FAILED(CoCreateInstance(CLSID_AsyncReader, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&recv)))
 	{
 		printf("Failed to create receive filter!\n");
-		return 1;
-	}
-
-	if(FAILED(CoCreateInstance(CLSID_VP8Decoder, NULL, CLSCTX_INPROC_SERVER, IID_IBaseFilter, (void**)&decoder)))
-	{
-		printf("Failed to load encoding filter!\n");
 		return 1;
 	}
 
@@ -106,15 +170,43 @@ int Player::createGraph()
 		return 1;
 	}
 
-
 	/*** Load Filter Controls ***/
 
-	if(FAILED(decoder->QueryInterface(IID_IVP8PostProcessing, (void**)&decoderControl)))
+	if(FAILED(recv->QueryInterface(&sourceControl)))
 	{
 		printf("Failed to get encoder control!\n");
 		return 1;
 	}
-	
+
+	HANDLE pipe = INVALID_HANDLE_VALUE;
+
+	if((pipe = CreateNamedPipe("\\\\.\\pipe\\videospringstream.ogg", PIPE_ACCESS_DUPLEX, PIPE_TYPE_BYTE, 10, 1000000, 1000000, 0, NULL)) == INVALID_HANDLE_VALUE)
+	{
+		printf("Failed to create named pipe.\n");
+		return 1;
+	}
+	else
+	{
+		struct PARMS
+		{
+			LPVOID pipe;
+			SOCKET socket;
+			long presenterId;
+		};
+			
+		PARMS *parms = new PARMS;
+		parms->pipe = pipe;
+		parms->socket = server;
+		parms->presenterId = presenterId;
+
+		if(CreateThread(NULL, 0, readThread, (LPVOID) parms, 0, NULL) == NULL)
+		{
+			printf("Failed to create thread.\n");
+			return 1;
+		}
+	}
+
+	sourceControl->Load(L"\\\\.\\pipe\\videospringstream.ogg", NULL);
 	if(FAILED(vmr9->QueryInterface(IID_IVMRFilterConfig9, (void**)&vmr9config)))
 	{
 		printf("Failed to get VMR9 config!\n");
@@ -131,77 +223,15 @@ int Player::createGraph()
 		return 1;
 	}
 
-
-	/*** Configure Filters ***/
-
-	decoderControl->SetFlags(0);
-
-
 	/*** Get Pins ***/
 
-	if(FAILED(decoder->EnumPins(&pins)))
+	if(FAILED(recv->FindPin(L"Output", &fileOut)))
 	{
-		printf("Failed to enumerate encoder pins!\n");
+		printf("Failed to get output pin!\n");
 		return 1;
 	}
-
-	if(FAILED(pins->Next(1, &decIn, NULL)))
-	{
-		printf("Failed to get next decoder pin!");
-		return 1;
-	}
-
-	if(FAILED(pins->Next(1, &decOut, NULL)))
-	{
-		printf("Failed to get next decoder pin!");
-		return 1;
-	}
-
-	CComPtr<IEnumPins> pins2, pins3;
-
-	if(FAILED(vmr9->EnumPins(&pins2)))
-	{
-		printf("Failed to enumerate pins!\n");
-		return 1;
-	}
-
-	for(int n = 0; n < 1; n++)
-	{
-		if(FAILED(pins2->Next(1, &renderPins[n], NULL)))
-		{
-			printf("Failed to get next render pin!\n");
-			continue;
-		}
-	}
-
-	if(FAILED(recv->EnumPins(&pins3)))
-	{
-		printf("Failed to enumerate pins!\n");
-		return 1;
-	}
-
-	if(FAILED(pins3->Next(1, &pinOut, NULL)))
-	{
-		printf("Failed to get next pin!\n");
-		return 1;
-	}
-
-	if(FAILED(pinOut->QueryInterface(IID_IVideoSpringRecv, (void**)&recvControl)))
-	{
-		printf("Failed to get recv control!\n");
-		return 1;
-	}
-
-	recvControl->SetServerSocket(server);
-	recvControl->SetPresenterId(presenterId);
 
 	/*** Add Filters to Graph ***/
-
-	if(FAILED(graph->AddFilter(decoder, NULL)))
-	{
-		printf("Failed to add decoder filter to graph!\n");
-		return 1;
-	}
 
 	if(FAILED(graph->AddFilter(recv, NULL)))
 	{
@@ -215,21 +245,7 @@ int Player::createGraph()
 		return 1;
 	}
 	
-
-	if(FAILED(graph->Connect(pinOut, decIn)))
-	{
-		printf("Failed to connect receive filter to decoder!\n");
-		return 1;
-	}
-
-
-//	graph->Render(decOut);
-	if(FAILED(graph->Connect(decOut, renderPins[0])))
-	{
-		printf("Failed to connect output pin to renderer!\n");
-		return 1;
-	}
-
+	graph->Render(fileOut);
 
 	VMR9NormalizedRect r;
 
