@@ -6,20 +6,7 @@
 
 #if defined(WIN32) || defined(_WINDLL)
 
-#pragma warning( disable : 4995 4005 4067 )
-
-#include <stdint.h>
-#include <WinSock2.h>
-#include <streams.h>
-#include <commctrl.h>
-#include <mmsystem.h>
-#include <initguid.h>
-#include <Wmcodecdsp.h>
-#include <dmodshow.h>
-#include <dmo.h>
-#include <tchar.h>
-#include <BaseTyps.h>
-#include <atlbase.h>
+#include "../VideoSpring/VideoSpring/includes.h"
 
 #else
 	#include <sys/types.h>
@@ -50,18 +37,19 @@
 
 enum
 {
-	C_SET_PRESENTER_SEND,
-	C_SET_PRESENTER_RECV,
-	C_SET_CLIENT_SEND,
-	C_SET_CLIENT_RECV,
-	C_SET_READY,
+	C_SET_AUDIO_SENDER,
+	C_SET_VIDEO_SENDER,
+	C_SET_AUDIO_RECEIVER,
+	C_SET_VIDEO_RECEIVER,
+	C_SET_MEDIA_TYPE,
 	C_SET_FORMAT,
-	C_BROADCAST,
+	C_BROADCAST_AUDIO,
+	C_BROADCAST_AUDIO_KEYFRAME,
+	C_BROADCAST_VIDEO,
+	C_BROADCAST_VIDEO_KEYFRAME,
 	C_RECEIVE,
 	C_NEW_PRESENTER,
 	C_NEW_CLIENT,
-	C_SET_FORCE_KEYFRAME,
-	C_CLEAR_FORCE_KEYFRAME,
 	C_DROP_PRESENTER
 };
 
